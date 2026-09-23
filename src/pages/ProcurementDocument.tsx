@@ -32,6 +32,7 @@ const dokumenPelaksana = [
   'Berita Acara Hasil Pengadaan Langsung',
   'Penunjukan Penyedia Pengadaan',
   'SPK atau Kontrak Kerja',
+  // 4 dibawh belum ada template
   'SPMK',
   'Berita Acara Pemeriksaan Pekerjaan',
   'Berita Acara Serah Terima Pekerjaan',
@@ -570,19 +571,22 @@ const ProcurementDocument = () => {
     getNomorDokumen(selectedIndex)
   );
   const [form, setForm] = useState({
+    // ========================================================
+    // DOKUMEN 001: SURAT UNDANGAN PENGADAAN (InvitationLetter)
+    // ========================================================
     lampiran: '1 (satu) berkas',
-    kepadaYth: selectedPengadaan.namaPenyedia,
-    di: selectedPengadaan.alamat,
-    email: selectedPengadaan.email,
+    kepadaYth: selectedPengadaan.namaPenyedia, // [Provider.name]
+    di: selectedPengadaan.alamat, // [Provider.address]
+    email: selectedPengadaan.email, // [Provider.email]
     perihal: documentName,
-    namaPaketPekerjaan: selectedPengadaan.judulPengadaan,
-    nilaiTotalHps: selectedPengadaan.hps,
-    tempatSurat: selectedPengadaan.tempatPenandatanganan,
+    namaPaketPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
+    nilaiTotalHps: selectedPengadaan.hps, // [Procurement.estimatedPriceIncludingTax]
+    tempatSurat: selectedPengadaan.tempatPenandatanganan, // [Procurement.signingPlace]
     tanggalSurat: '2026-07-29',
     hariPelaksanaan: '2026-07-29',
     waktuMulai: '10:00',
     waktuSelesai: '12:00',
-    tempatPelaksanaan: selectedPengadaan.tempatPenandatanganan,
+    tempatPelaksanaan: selectedPengadaan.tempatPenandatanganan, // [Procurement.signingPlace]
     namaKegiatan: 'Penjelasan Pekerjaan',
     tanggalKegiatan: '2026-07-31',
     waktuKegiatanMulai: '10:00',
@@ -591,65 +595,89 @@ const ProcurementDocument = () => {
       'Dengan ini mengharapkan kehadiran Saudara untuk mengikuti Penjelasan Pekerjaan, yang akan diadakan pada : ',
     keteranganPermohonan:
       'Saudara diminta untuk memasukkan penawaran administrasi, teknis dan harga secara langsung dan melaksanakan klarifikasi dan Negosiasi pada : ',
-    penandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    penandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =========================================================================
+    // DOKUMEN 002: BERITA ACARA PENJELASAN PEKERJAAN (WorkExplanationMinutes)
+    // =========================================================================
     beritaTanggal: '2026-07-29',
     beritaPukul: '11:00',
-    beritaTempat: selectedPengadaan.tempatPenandatanganan,
-    beritaPeserta: selectedPengadaan.judulPengadaan,
-    beritaNamaPenjelasanPekerjaan: selectedPengadaan.judulPengadaan,
+    beritaTempat: selectedPengadaan.tempatPenandatanganan, // [Procurement.signingPlace]
+    beritaPeserta: selectedPengadaan.judulPengadaan, // [Procurement.participants]
+    beritaNamaPenjelasanPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     beritaKeteranganAwal: 'Dengan hasil terlampir sebagai berikut : ',
-    beritaRapatDipimpinPpk: selectedPengadaan.pbj[0]?.nrp ?? '',
-    beritaPenjelasanAdministrasiPpbj: selectedPengadaan.pbj[0]?.nrp ?? '',
-    beritaPenjelasanTeknikPpbj: selectedPengadaan.pbj[0]?.nrp ?? '',
-    beritaRapatTanyaJawab: selectedPengadaan.pbj[0]?.nrp ?? '',
+    beritaRapatDipimpinPpk: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi PPK]
+    beritaPenjelasanAdministrasiPpbj: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi PBJ]
+    beritaPenjelasanTeknikPpbj: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi PBJ]
+    beritaRapatTanyaJawab: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi PBJ]
     beritaKeteranganTujuan:
       'Penjelasan Pekerjaan ini ditutup pada Tanggal tersebut di atas pada pukul 11.00 WITA.\n\nSelanjutnya calon penyedia barang/jasa diminta segera memasukkan dokumen penawaran pada hari operasional kerja setelah penjelasan pekerjaan untuk diproses lebih lanjut oleh Pejabat Pengadaan barang/jasa sesuai dengan ketentuan yang berlaku.\n\nDemikian Berita Acara ini dibuat untuk dipergunakan sebagaimana mestinya.',
-    beritaPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
-    buktiPekerjaan: selectedPengadaan.judulPengadaan,
+    beritaPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =========================================================================
+    // DOKUMEN 003: BUKTI PENGAMBILAN DOKUMEN (DocumentCollectionReceipt)
+    // =========================================================================
+    buktiPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     buktiTanggal: '2026-07-30',
     buktiWaktu: '11:00',
-    buktiNamaPerusahaan: 'Muamalat Institute',
-    buktiNamaPejabatPerusahaan: 'Amien',
-    buktiJabatanPejabat: 'Direktur Eksekutif',
-    buktiPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    buktiNamaPerusahaan: 'Muamalat Institute', // [Provider.name]
+    buktiNamaPejabatPerusahaan: 'Amien', // [Provider.directorName]
+    buktiJabatanPejabat: 'Direktur Eksekutif', // [Provider.position]
+    buktiPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =========================================================================================
+    // DOKUMEN 004: BERITA ACARA PEMASUKAN DAN PEMBUKAAN DOKUMEN (DocumentSubmissionMinutes)
+    // =========================================================================================
     baPemasukanTanggalDokumen: '2026-07-31',
     baPemasukanPukul: '11:00',
-    baPemasukanNamaPekerjaan: selectedPengadaan.judulPengadaan,
+    baPemasukanNamaPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     baPemasukanPejabatPengadaan:
-      'Pejabat Pengadaan Barang/Jasa PT BPR NTB PERSERODA',
-    baPemasukanPenyedia: selectedPengadaan.namaPenyedia,
+      'Pejabat Pengadaan Barang/Jasa PT BPR NTB PERSERODA', // [Relasi PBJ]
+    baPemasukanPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
     baPemasukanTanggalPemasukan: '2026-07-30',
     baPemasukanMasaBerlaku: '7 (tujuh) hari kalender',
-    baPemasukanNilaiPenawaran: selectedPengadaan.hps,
+    baPemasukanNilaiPenawaran: selectedPengadaan.hps, // [Procurement.offeredPrice / HPS]
     baPemasukanRincianHarga: 'Ada',
     baPemasukanKeterangan: 'Lengkap',
-    baPemasukanPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
-    tandaTerimaPekerjaan: selectedPengadaan.judulPengadaan,
+    baPemasukanPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =====================================================================
+    // DOKUMEN 005: TANDA TERIMA PEMASUKAN DOKUMEN (DocumentSubmissionReceipt)
+    // =====================================================================
+    tandaTerimaPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     tandaTerimaTanggal: '2026-08-03',
     tandaTerimaWaktu: '11:00',
-    tandaTerimaNamaPerusahaan: selectedPengadaan.namaPenyedia,
-    tandaTerimaNamaPejabat: selectedPengadaan.namaDirektur,
-    tandaTerimaJabatan: 'Direktur',
-    tandaTerimaPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    tandaTerimaNamaPerusahaan: selectedPengadaan.namaPenyedia, // [Provider.name]
+    tandaTerimaNamaPejabat: selectedPengadaan.namaDirektur, // [Provider.directorName]
+    tandaTerimaJabatan: 'Direktur', // [Provider.position]
+    tandaTerimaPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =====================================================================
+    // DOKUMEN 006: BERITA ACARA EVALUASI DOKUMEN (DocumentEvaluationMinutes)
+    // =====================================================================
     baEvaluasiTanggalDokumen: '2026-08-03',
-    baEvaluasiNamaPekerjaan: selectedPengadaan.judulPengadaan,
-    baEvaluasiNamaPenyedia: selectedPengadaan.namaPenyedia,
-    baEvaluasiNomorBaPemasukan: getNomorDokumen(3),
-    baEvaluasiNilaiPenawaran: selectedPengadaan.hps,
+    baEvaluasiNamaPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
+    baEvaluasiNamaPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
+    baEvaluasiNomorBaPemasukan: getNomorDokumen(3), // [Fallback Dokumen 004]
+    baEvaluasiNilaiPenawaran: selectedPengadaan.hps, // [Procurement.offeredPrice / HPS]
     baEvaluasiJadwalPelaksanaan: '45 (Empat Puluh Lima) hari kalender',
     baEvaluasiKualifikasiSiup: 'L',
     baEvaluasiKualifikasiNpwp: 'L',
     baEvaluasiKualifikasiKtp: 'L',
     baEvaluasiKualifikasiKswp: 'L',
-    baEvaluasiPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    baEvaluasiPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // ===================================================================================
+    // DOKUMEN 007: UNDANGAN KLARIFIKASI DAN NEGOSIASI (ClarificationNegotiationInvitation)
+    // ===================================================================================
     uknLampiran: '1 (satu) gabung',
-    uknTempatSurat: selectedPengadaan.tempatPenandatanganan,
+    uknTempatSurat: selectedPengadaan.tempatPenandatanganan, // [Procurement.signingPlace]
     uknTanggalSurat: '2026-08-03',
-    uknKepadaJabatan: 'Direktur',
-    uknNamaPenyedia: selectedPengadaan.namaPenyedia,
-    uknAlamat: selectedPengadaan.alamat,
+    uknKepadaJabatan: 'Direktur', // [Provider.position]
+    uknNamaPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
+    uknAlamat: selectedPengadaan.alamat, // [Provider.address]
     uknPerihal: 'Undangan Klarifikasi dan Negosiasi',
-    uknPekerjaan: selectedPengadaan.judulPengadaan,
+    uknPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     uknWaktu: '11:00',
     uknHari: '2026-08-04',
     uknTempat: 'Ruang Rapat Kantor PT BPR NTB PERSERODA',
@@ -657,11 +685,15 @@ const ProcurementDocument = () => {
       'Berdasarkan hasil evaluasi yang kami lakukan, penawaran Saudara kami nyatakan memenuhi syarat. Sehubungan dengan hal tersebut, kami mengundang Saudara dalam rangka klarifikasi, negosiasi harga, dan pembuktian kualifikasi dengan keterangan sebagai berikut ini :',
     uknParagrafPenutup:
       'Dalam Pembuktian Kualifikasi, mohon kiranya membawa dokumen aseli terhadap dokumen yang dicantumkan dalam dokumen penawaran. Demikian atas perhatian dan kehadiran saudara disampaikan terima kasih.',
-    uknPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    uknPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =========================================================================================
+    // DOKUMEN 008: BERITA ACARA KLARIFIKASI DAN NEGOSIASI (ClarificationNegotiationMinutes)
+    // =========================================================================================
     baknTanggal: '2026-08-04',
     baknTempat: 'Ruang Rapat Kantor PT BPR NTB PERSERODA',
-    baknNamaPenyedia: selectedPengadaan.namaPenyedia,
-    baknPekerjaan: selectedPengadaan.judulPengadaan,
+    baknNamaPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
+    baknPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     baknHasil1:
       'Dari hasil klarifikasi teknis, ' +
       selectedPengadaan.namaPenyedia +
@@ -674,49 +706,61 @@ const ProcurementDocument = () => {
       ' dapat menunjukkan dokumen asli yang tercantum dalam dokumen penawaran.',
     baknKeteranganPenutup:
       'Demikian Berita Acara ini dibuat untuk ditindak lanjuti sebagaimana mestinya.',
-    baknNamaDirektur: selectedPengadaan.namaDirektur,
-    baknPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    baknNamaDirektur: selectedPengadaan.namaDirektur, // [Provider.directorName]
+    baknPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =========================================================================
+    // DOKUMEN 009: BERITA ACARA HASIL PENGADAAN LANGSUNG (HasilPengadaan)
+    // =========================================================================
     bahplTanggal: '2026-08-05',
-    bahplPekerjaan: selectedPengadaan.judulPengadaan,
-    bahplHps: selectedPengadaan.hps,
+    bahplPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
+    bahplHps: selectedPengadaan.hps, // [Procurement.estimatedPriceIncludingTax]
     bahplUnsurEvaluasi: 'Adminstrasi, Teknis, Harga dan Kualifikasi',
-    bahplNamaPerusahaan: selectedPengadaan.namaPenyedia,
-    bahplHargaPenawaran: '135450000',
+    bahplNamaPerusahaan: selectedPengadaan.namaPenyedia, // [Provider.name]
+    bahplHargaPenawaran: '135450000', // [Procurement.offeredPriceIncludingTax]
     bahplEvalAdministrasi: 'M',
     bahplEvalTeknis: 'M',
     bahplEvalHarga: 'M',
     bahplEvalKualifikasi: 'M',
     bahplKet: 'M',
-    bahplNamaPenyedia: selectedPengadaan.namaPenyedia,
-    bahplNamaDirektur: selectedPengadaan.namaDirektur,
-    bahplAlamat: selectedPengadaan.alamat,
-    bahplNpwp: '1000000009573294',
-    bahplHargaNegosiasi: '130950000',
+    bahplNamaPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
+    bahplNamaDirektur: selectedPengadaan.namaDirektur, // [Provider.directorName]
+    bahplAlamat: selectedPengadaan.alamat, // [Provider.address]
+    bahplNpwp: '1000000009573294', // [Provider.taxIdentificationNumber]
+    bahplHargaNegosiasi: '130950000', // [Procurement.negotiatedPrice]
     bahplKeteranganPenutup:
       'Demikian berita acara ini dibuat sebagai pertimbangan dalam pembuatan kontrak oleh pejabat pembuat Komitmen.',
-    bahplPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
-    penunjukanTempat: selectedPengadaan.tempatPenandatanganan,
+    bahplPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // ============================================================================
+    // DOKUMEN 010: PENUNJUKAN PENYEDIA PENGADAAN / SPPBJ (PenunjukanPenyedia)
+    // ============================================================================
+    penunjukanTempat: selectedPengadaan.tempatPenandatanganan, // [Procurement.signingPlace]
     penunjukanTanggal: '2026-08-06',
     penunjukanLampiran: '-',
-    penunjukanJabatanTujuan: selectedPengadaan.jabatanDirektur,
-    penunjukanKepada: selectedPengadaan.namaPenyedia,
+    penunjukanJabatanTujuan: selectedPengadaan.jabatanDirektur, // [Provider.position]
+    penunjukanKepada: selectedPengadaan.namaPenyedia, // [Provider.name]
     penunjukanDi: 'Tempat',
     penunjukanPerihal: `Penunjukan Penyedia Pengadaan ${selectedPengadaan.judulPengadaan}`,
     penunjukanTanggalPenawaran: '2026-07-30',
-    penunjukanNilaiNegosiasi: selectedPengadaan.hasilNegosiasi,
+    penunjukanNilaiNegosiasi: selectedPengadaan.hasilNegosiasi, // [Procurement.negotiatedPrice]
     penunjukanKeteranganTindakLanjut:
       'Sebagai tindak lanjut dari Surat Penunjukan Penyedia Barang/Jasa (SPPBJ) ini Saudara diharuskan menandatangani SPK paling lambat 14 (empat belas) hari setelah diterbitkannya SPPBJ. Kegagalan Saudara untuk menerima penunjukan ini yang disusun berdasarkan evaluasi terhadap penawaran Saudara, akan dikenakan sanksi sesuai ketentuan dan peraturan yang berlaku.',
-    penunjukanPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    penunjukanPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =================================================================
+    // DOKUMEN 011: SPK ATAU KONTRAK KERJA (Spk)
+    // =================================================================
     spkTanggal: '2026-08-07',
-    spkPpk: selectedPengadaan.ppk[0]?.nrp ?? '',
-    spkNamaPenyedia: selectedPengadaan.namaDirektur,
-    spkJabatanPenyedia: selectedPengadaan.jabatanDirektur,
-    spkPerusahaanPenyedia: selectedPengadaan.namaPenyedia,
-    spkPaketPengadaan: selectedPengadaan.judulPengadaan,
-    spkNomorSuratUndangan: getNomorDokumen(0),
-    spkTanggalSuratUndangan: '2026-07-29',
+    spkPpk: selectedPengadaan.ppk[0]?.nrp ?? '', // [Relasi PPK]
+    spkNamaPenyedia: selectedPengadaan.namaDirektur, // [Provider.directorName]
+    spkJabatanPenyedia: selectedPengadaan.jabatanDirektur, // [Provider.position]
+    spkPerusahaanPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
+    spkPaketPengadaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
+    spkNomorSuratUndangan: getNomorDokumen(0), // [Fallback Dokumen 001]
+    spkTanggalSuratUndangan: '2026-07-29', // [Fallback Dokumen 001]
     spkSumberDana: 'Rencana Bisnis Bank (RBB) Tahun Anggaran 2026',
-    spkNilaiKontrak: selectedPengadaan.hasilNegosiasi,
+    spkNilaiKontrak: selectedPengadaan.hasilNegosiasi, // [Procurement.negotiatedPrice]
   });
   const [showResultModal, setShowResultModal] = useState(false);
   const [useHeaderFooter] = useState(true);
@@ -852,7 +896,7 @@ const ProcurementDocument = () => {
     showFullPageFooter
       ? getFullPageFooterHtml(footerImage.src, fullPageFooterHeightMm)
       : '';
-
+// Template All Document
   const getSuratUndanganContentHtml = () => `
     <div class="content-block top">
       <table class="meta top-meta">
@@ -2372,6 +2416,7 @@ const ProcurementDocument = () => {
                   </p>
                 </div>
               </div>
+              // Form All Document
             ) : isSuratUndangan ? (
               <div className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">

@@ -280,6 +280,21 @@ const PETA_DOKUMEN: Record<string, PetaDokumen> = {
       { form: 'penunjukanPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
+  'SPK atau Kontrak Kerja': {
+    slug: 'spk-atau-kontrak-kerja',
+    fields: [
+      { form: 'spkTanggal', api: 'tanggalSpk', tipe: 'date' },
+      { form: 'spkPaketPengadaan', api: 'paketPengadaan' },
+      { form: 'spkNomorSuratUndangan', api: 'nomorSuratUndangan' },
+      { form: 'spkTanggalSuratUndangan', api: 'tanggalSuratUndangan', tipe: 'date' },
+      { form: 'spkSumberDana', api: 'sumberDana' },
+      { form: 'spkNilaiKontrak', api: 'nilaiKontrak', tipe: 'rupiah' },
+      { form: 'spkPerusahaanPenyedia', api: 'namaPerusahaanPenyedia' },
+      { form: 'spkNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'spkJabatanPenyedia', api: 'jabatanPenyedia' },
+      { form: 'spkPpk', api: 'penandaTanganPpkId', tipe: 'pegawai' },
+    ],
+  },
 };
 
 const formatTanggalIndonesia = () =>

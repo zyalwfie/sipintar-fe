@@ -226,6 +226,21 @@ const PETA_DOKUMEN: Record<string, PetaDokumen> = {
       { form: 'uknPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
+  'Berita Acara Klarifikasi dan Negosiasi Dokumen': {
+    slug: 'berita-acara-klarifikasi-dan-negosiasi-dokumen',
+    fields: [
+      { form: 'baknTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'baknTempat', api: 'tempat' },
+      { form: 'baknNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'baknPekerjaan', api: 'untukPekerjaan' },
+      { form: 'baknHasil1', api: 'hasilKlarifikasiTeknis' },
+      { form: 'baknHasil2', api: 'hasilNegosiasiHarga' },
+      { form: 'baknHasil3', api: 'hasilPembuktianKualifikasi' },
+      { form: 'baknKeteranganPenutup', api: 'keteranganPenutup' },
+      { form: 'baknNamaDirektur', api: 'namaDirekturPenyedia' },
+      { form: 'baknPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
 };
 
 const formatTanggalIndonesia = () =>

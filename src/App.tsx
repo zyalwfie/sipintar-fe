@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 
 import Loader from './common/Loader';
 import PageTitle from './components/PageTitle';
@@ -122,12 +123,17 @@ function App() {
     </Routes>
   );
 
-  return loading ? (
-    <Loader />
-  ) : isAuthPage ? (
-    routes
-  ) : (
-    <DefaultLayout>{routes}</DefaultLayout>
+  return (
+    <>
+      <Toaster position="top-right" />
+      {loading ? (
+        <Loader />
+      ) : isAuthPage ? (
+        routes
+      ) : (
+        <DefaultLayout>{routes}</DefaultLayout>
+      )}
+    </>
   );
 }
 

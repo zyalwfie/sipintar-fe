@@ -1,7 +1,8 @@
-import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import {
   FiDownload,
   FiEdit2,
+  FiLoader,
   FiPlus,
   FiSearch,
   FiTrash2,
@@ -10,21 +11,16 @@ import {
   FiUsers,
   FiX,
 } from 'react-icons/fi';
+import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import Breadcrumb from '../components/Breadcrumbs/Breadcrumb';
-
-type JenisKelamin = 'L' | 'P';
-
-type Pegawai = {
-  id: number;
-  kodePegawai: string;
-  kodeUnit: string;
-  unitKerja: string;
-  nama: string;
-  jabatan: string;
-  nrp: string;
-  jenisKelamin: JenisKelamin;
-};
+import { getApiErrorMessage, pegawaiApi } from '../api';
+import type {
+  JenisKelamin,
+  Pegawai,
+  PegawaiInput,
+  RingkasanPegawai,
+} from '../api';
 
 type ModalMode = 'add' | 'edit' | 'delete';
 
@@ -38,57 +34,14 @@ const excelHeaders = [
   'Jenis Kelamin',
 ];
 
-const initialPegawai: Pegawai[] = [
-  {
-    id: 1,
-    kodePegawai: 'PGW-001',
-    kodeUnit: 'PBJ',
-    unitKerja: 'Pengadaan Internal',
-    nama: 'I Made Surya Pratama',
-    jabatan: 'Pejabat Pembuat Komitmen',
-    nrp: '19870412',
-    jenisKelamin: 'L',
-  },
-  {
-    id: 2,
-    kodePegawai: 'PGW-002',
-    kodeUnit: 'OPR',
-    unitKerja: 'Operasional',
-    nama: 'Ni Putu Maharani',
-    jabatan: 'Pejabat Pengadaan Barang/Jasa',
-    nrp: '19910622',
-    jenisKelamin: 'P',
-  },
-  {
-    id: 3,
-    kodePegawai: 'PGW-003',
-    kodeUnit: 'UMM',
-    unitKerja: 'Umum',
-    nama: 'Muhammad Rizal Fahri',
-    jabatan: 'Analis Pengadaan',
-    nrp: '19891105',
-    jenisKelamin: 'L',
-  },
-  {
-    id: 4,
-    kodePegawai: 'PGW-004',
-    kodeUnit: 'ADM',
-    unitKerja: 'Administrasi',
-    nama: 'Ayu Lestari Dewi',
-    jabatan: 'Kepala Bagian Umum',
-    nrp: '19940718',
-    jenisKelamin: 'P',
-  },
-];
-
-const emptyForm = {
+const emptyForm: PegawaiInput = {
   kodePegawai: '',
   kodeUnit: '',
   unitKerja: '',
   nama: '',
   jabatan: '',
   nrp: '',
-  jenisKelamin: 'L' as JenisKelamin,
+  jenisKelamin: 'L',
 };
 
 const getCellValue = (row: Record<string, unknown>, header: string) => {
@@ -110,13 +63,56 @@ const labelJenisKelamin = (value: JenisKelamin) =>
 
 const DataPegawai = () => {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [pegawai, setPegawai] = useState<Pegawai[]>(initialPegawai);
+  const [pegawai, setPegawai] = useState<Pegawai[]>([]);
+  const [ringkasan, setRingkasan] = useState<RingkasanPegawai | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [query, setQuery] = useState('');
   const [modalMode, setModalMode] = useState<ModalMode | null>(null);
   const [selectedPegawai, setSelectedPegawai] = useState<Pegawai | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState<PegawaiInput>(emptyForm);
   const [importMessage, setImportMessage] = useState('');
+
+  const muatRingkasan = useCallback(async () => {
+    try {
+      setRingkasan(await pegawaiApi.ringkasan());
+    } catch (error) {
+      // Ringkasan gagal tidak memblokir tabel utama.
+      console.error(error);
+    }
+  }, []);
+
+  const muatPegawai = useCallback(async (cari: string) => {
+    setLoading(true);
+    setLoadError('');
+
+    try {
+      const hasil = await pegawaiApi.daftar({
+        cari: cari.trim() || undefined,
+        batas: 100,
+      });
+      setPegawai(hasil.data);
+    } catch (error) {
+      setLoadError(getApiErrorMessage(error, 'Gagal memuat data pegawai.'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    muatRingkasan();
+  }, [muatRingkasan]);
+
+  // Pencarian dilakukan di server (kode pegawai / nama / NRP) dengan debounce.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      muatPegawai(query);
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [query, muatPegawai]);
 
   useEffect(() => {
     if (!modalMode) return;
@@ -127,20 +123,6 @@ const DataPegawai = () => {
 
     return () => cancelAnimationFrame(animationFrame);
   }, [modalMode]);
-
-  const filteredPegawai = useMemo(() => {
-    const keyword = query.toLowerCase();
-
-    return pegawai.filter((item) =>
-      `${item.kodePegawai} ${item.kodeUnit} ${item.unitKerja} ${item.nama} ${item.jabatan} ${item.nrp} ${item.jenisKelamin} ${labelJenisKelamin(item.jenisKelamin)}`
-        .toLowerCase()
-        .includes(keyword)
-    );
-  }, [pegawai, query]);
-
-  const totalLakiLaki = pegawai.filter((item) => item.jenisKelamin === 'L').length;
-  const totalPerempuan = pegawai.filter((item) => item.jenisKelamin === 'P').length;
-  const units = new Set(pegawai.map((item) => item.unitKerja)).size;
 
   const openModal = (mode: ModalMode, item?: Pegawai) => {
     setModalMode(mode);
@@ -169,49 +151,58 @@ const DataPegawai = () => {
     }, 200);
   };
 
-  const updateForm = <K extends keyof typeof form>(
+  const updateForm = <K extends keyof PegawaiInput>(
     key: K,
-    value: (typeof form)[K]
+    value: PegawaiInput[K]
   ) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-
-    if (modalMode === 'add') {
-      setPegawai((current) => [
-        ...current,
-        {
-          id: Date.now(),
-          ...form,
-        },
-      ]);
-    }
-
-    if (modalMode === 'edit' && selectedPegawai) {
-      setPegawai((current) =>
-        current.map((item) =>
-          item.id === selectedPegawai.id
-            ? {
-                ...item,
-                ...form,
-              }
-            : item
-        )
-      );
-    }
-
-    closeModal();
+  const refresh = async () => {
+    await Promise.all([muatPegawai(query), muatRingkasan()]);
   };
 
-  const handleDelete = () => {
-    if (!selectedPegawai) return;
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (submitting) return;
 
-    setPegawai((current) =>
-      current.filter((item) => item.id !== selectedPegawai.id)
-    );
-    closeModal();
+    setSubmitting(true);
+
+    try {
+      if (modalMode === 'add') {
+        await pegawaiApi.buat(form);
+        toast.success('Pegawai berhasil ditambahkan.');
+      }
+
+      if (modalMode === 'edit' && selectedPegawai) {
+        await pegawaiApi.perbarui(selectedPegawai.id, form);
+        toast.success('Pegawai berhasil diperbarui.');
+      }
+
+      closeModal();
+      await refresh();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Gagal menyimpan pegawai.'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedPegawai || submitting) return;
+
+    setSubmitting(true);
+
+    try {
+      await pegawaiApi.hapus(selectedPegawai.id);
+      toast.success('Pegawai berhasil dihapus.');
+      closeModal();
+      await refresh();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Gagal menghapus pegawai.'));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const downloadTemplate = () => {
@@ -244,9 +235,8 @@ const DataPegawai = () => {
       defval: '',
     });
 
-    const importedPegawai = rows
-      .map((row, index) => ({
-        id: Date.now() + index,
+    const importedPegawai: PegawaiInput[] = rows
+      .map((row) => ({
         kodePegawai: getCellValue(row, 'Kode Pegawai'),
         kodeUnit: getCellValue(row, 'Kode Unit'),
         unitKerja: getCellValue(row, 'Unit Kerja'),
@@ -265,17 +255,43 @@ const DataPegawai = () => {
           item.nrp
       );
 
-    if (importedPegawai.length > 0) {
-      setPegawai((current) => [...current, ...importedPegawai]);
-      setImportMessage(`${importedPegawai.length} data pegawai berhasil diimport.`);
-    } else {
+    event.target.value = '';
+
+    if (importedPegawai.length === 0) {
       setImportMessage(
         'Import gagal. Pastikan header Excel sesuai template yang tersedia.'
       );
+      window.setTimeout(() => setImportMessage(''), 4000);
+      return;
     }
 
-    event.target.value = '';
-    window.setTimeout(() => setImportMessage(''), 3500);
+    const loadingToast = toast.loading(
+      `Mengimport ${importedPegawai.length} data pegawai...`
+    );
+
+    const hasil = await Promise.allSettled(
+      importedPegawai.map((item) => pegawaiApi.buat(item))
+    );
+
+    const berhasil = hasil.filter((item) => item.status === 'fulfilled').length;
+    const gagal = importedPegawai.length - berhasil;
+
+    toast.dismiss(loadingToast);
+    setImportMessage(
+      `${berhasil} data pegawai berhasil diimport${
+        gagal > 0 ? `, ${gagal} gagal (kemungkinan kode/NRP duplikat).` : '.'
+      }`
+    );
+
+    if (berhasil > 0) {
+      toast.success(`${berhasil} pegawai berhasil diimport.`);
+      await refresh();
+    }
+    if (gagal > 0 && berhasil === 0) {
+      toast.error('Semua baris gagal diimport.');
+    }
+
+    window.setTimeout(() => setImportMessage(''), 5000);
   };
 
   return (
@@ -289,7 +305,7 @@ const DataPegawai = () => {
           </div>
           <p className="text-sm font-medium">Total Pegawai</p>
           <h3 className="mt-2 text-2xl font-bold text-black dark:text-white">
-            {pegawai.length}
+            {ringkasan?.totalPegawai ?? '-'}
           </h3>
         </div>
         <div className="rounded-sm border border-stroke bg-white p-5 shadow-default dark:border-strokedark dark:bg-boxdark">
@@ -298,7 +314,7 @@ const DataPegawai = () => {
           </div>
           <p className="text-sm font-medium">Laki-laki</p>
           <h3 className="mt-2 text-2xl font-bold text-black dark:text-white">
-            {totalLakiLaki}
+            {ringkasan?.lakiLaki ?? '-'}
           </h3>
         </div>
         <div className="rounded-sm border border-stroke bg-white p-5 shadow-default dark:border-strokedark dark:bg-boxdark">
@@ -307,7 +323,7 @@ const DataPegawai = () => {
           </div>
           <p className="text-sm font-medium">Perempuan</p>
           <h3 className="mt-2 text-2xl font-bold text-black dark:text-white">
-            {totalPerempuan}
+            {ringkasan?.perempuan ?? '-'}
           </h3>
         </div>
         <div className="rounded-sm border border-stroke bg-white p-5 shadow-default dark:border-strokedark dark:bg-boxdark">
@@ -316,7 +332,7 @@ const DataPegawai = () => {
           </div>
           <p className="text-sm font-medium">Unit Terdata</p>
           <h3 className="mt-2 text-2xl font-bold text-black dark:text-white">
-            {units}
+            {ringkasan?.unitTerdata ?? '-'}
           </h3>
         </div>
       </div>
@@ -402,66 +418,100 @@ const DataPegawai = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredPegawai.map((item) => (
-                <tr
-                  key={item.id}
-                  className="border-b border-stroke last:border-b-0 dark:border-strokedark"
-                >
-                  <td className="px-5 py-4 text-sm font-medium text-black dark:text-white">
-                    {item.kodePegawai}
-                  </td>
-                  <td className="px-5 py-4 text-sm text-black dark:text-white">
-                    {item.kodeUnit}
-                  </td>
-                  <td className="px-5 py-4 text-sm text-black dark:text-white">
-                    {item.unitKerja}
-                  </td>
-                  <td className="px-5 py-4 text-sm font-semibold text-black dark:text-white">
-                    {item.nama}
-                  </td>
-                  <td className="px-5 py-4 text-sm text-black dark:text-white">
-                    {item.jabatan}
-                  </td>
-                  <td className="px-5 py-4 text-sm text-black dark:text-white">
-                    {item.nrp}
-                  </td>
-                  <td className="px-5 py-4">
-                    <span
-                      className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${
-                        item.jenisKelamin === 'L'
-                          ? 'bg-primary/10 text-primary'
-                          : 'bg-meta-5/10 text-meta-5'
-                      }`}
-                    >
-                      {item.jenisKelamin} - {labelJenisKelamin(item.jenisKelamin)}
+              {loading && (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="px-5 py-10 text-center text-sm text-body dark:text-bodydark"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <FiLoader className="animate-spin" size={16} />
+                      Memuat data pegawai...
                     </span>
                   </td>
-                  <td className="px-5 py-4">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openModal('edit', item)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-primary/10 hover:text-primary dark:text-bodydark"
-                        title="Edit"
-                        aria-label="Edit pegawai"
-                      >
-                        <FiEdit2 size={18} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openModal('delete', item)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-danger/10 hover:text-danger dark:text-bodydark"
-                        title="Hapus"
-                        aria-label="Hapus pegawai"
-                      >
-                        <FiTrash2 size={18} />
-                      </button>
-                    </div>
+                </tr>
+              )}
+
+              {!loading && loadError && (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="px-5 py-10 text-center text-sm text-danger"
+                  >
+                    {loadError}
+                    <button
+                      type="button"
+                      onClick={() => muatPegawai(query)}
+                      className="ml-2 font-semibold underline"
+                    >
+                      Coba lagi
+                    </button>
                   </td>
                 </tr>
-              ))}
+              )}
 
-              {filteredPegawai.length === 0 && (
+              {!loading &&
+                !loadError &&
+                pegawai.map((item) => (
+                  <tr
+                    key={item.id}
+                    className="border-b border-stroke last:border-b-0 dark:border-strokedark"
+                  >
+                    <td className="px-5 py-4 text-sm font-medium text-black dark:text-white">
+                      {item.kodePegawai}
+                    </td>
+                    <td className="px-5 py-4 text-sm text-black dark:text-white">
+                      {item.kodeUnit}
+                    </td>
+                    <td className="px-5 py-4 text-sm text-black dark:text-white">
+                      {item.unitKerja}
+                    </td>
+                    <td className="px-5 py-4 text-sm font-semibold text-black dark:text-white">
+                      {item.nama}
+                    </td>
+                    <td className="px-5 py-4 text-sm text-black dark:text-white">
+                      {item.jabatan}
+                    </td>
+                    <td className="px-5 py-4 text-sm text-black dark:text-white">
+                      {item.nrp}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${
+                          item.jenisKelamin === 'L'
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-meta-5/10 text-meta-5'
+                        }`}
+                      >
+                        {item.jenisKelamin} - {labelJenisKelamin(item.jenisKelamin)}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openModal('edit', item)}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-primary/10 hover:text-primary dark:text-bodydark"
+                          title="Edit"
+                          aria-label="Edit pegawai"
+                        >
+                          <FiEdit2 size={18} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openModal('delete', item)}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-danger/10 hover:text-danger dark:text-bodydark"
+                          title="Hapus"
+                          aria-label="Hapus pegawai"
+                        >
+                          <FiTrash2 size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+
+              {!loading && !loadError && pegawai.length === 0 && (
                 <tr>
                   <td
                     colSpan={8}
@@ -532,9 +582,14 @@ const DataPegawai = () => {
                     <button
                       type="button"
                       onClick={handleDelete}
-                      className="inline-flex items-center gap-2 rounded bg-danger px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
+                      disabled={submitting}
+                      className="inline-flex items-center gap-2 rounded bg-danger px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <FiTrash2 size={16} />
+                      {submitting ? (
+                        <FiLoader className="animate-spin" size={16} />
+                      ) : (
+                        <FiTrash2 size={16} />
+                      )}
                       Hapus
                     </button>
                   </div>
@@ -652,9 +707,14 @@ const DataPegawai = () => {
                     </button>
                     <button
                       type="submit"
-                      className="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
+                      disabled={submitting}
+                      className="inline-flex items-center gap-2 rounded bg-primary px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <FiUserCheck size={16} />
+                      {submitting ? (
+                        <FiLoader className="animate-spin" size={16} />
+                      ) : (
+                        <FiUserCheck size={16} />
+                      )}
                       Simpan
                     </button>
                   </div>

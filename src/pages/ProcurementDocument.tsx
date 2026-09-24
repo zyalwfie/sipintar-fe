@@ -241,6 +241,29 @@ const PETA_DOKUMEN: Record<string, PetaDokumen> = {
       { form: 'baknPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
+  'Berita Acara Hasil Pengadaan Langsung': {
+    slug: 'berita-acara-hasil-pengadaan-langsung',
+    fields: [
+      { form: 'bahplTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'bahplPekerjaan', api: 'pekerjaan' },
+      { form: 'bahplHps', api: 'hps', tipe: 'rupiah' },
+      { form: 'bahplUnsurEvaluasi', api: 'unsurEvaluasi' },
+      { form: 'bahplNamaPerusahaan', api: 'namaPerusahaan' },
+      { form: 'bahplHargaPenawaran', api: 'hargaPenawaran', tipe: 'rupiah' },
+      { form: 'bahplEvalAdministrasi', api: 'evaluasiAdministrasi' },
+      { form: 'bahplEvalTeknis', api: 'evaluasiTeknis' },
+      { form: 'bahplEvalHarga', api: 'evaluasiHarga' },
+      { form: 'bahplEvalKualifikasi', api: 'evaluasiKualifikasi' },
+      { form: 'bahplKet', api: 'keteranganEvaluasi' },
+      { form: 'bahplNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'bahplNamaDirektur', api: 'namaDirekturUtama' },
+      { form: 'bahplAlamat', api: 'alamatPerusahaan' },
+      { form: 'bahplNpwp', api: 'npwp' },
+      { form: 'bahplHargaNegosiasi', api: 'hargaHasilNegosiasi', tipe: 'rupiah' },
+      { form: 'bahplKeteranganPenutup', api: 'keteranganPenutup' },
+      { form: 'bahplPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
 };
 
 const formatTanggalIndonesia = () =>

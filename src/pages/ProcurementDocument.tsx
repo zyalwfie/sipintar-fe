@@ -264,6 +264,22 @@ const PETA_DOKUMEN: Record<string, PetaDokumen> = {
       { form: 'bahplPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
+  'Penunjukan Penyedia Pengadaan': {
+    slug: 'penunjukan-penyedia-pengadaan',
+    fields: [
+      { form: 'penunjukanTempat', api: 'tempatSurat' },
+      { form: 'penunjukanTanggal', api: 'tanggalSurat', tipe: 'date' },
+      { form: 'penunjukanLampiran', api: 'lampiran' },
+      { form: 'penunjukanJabatanTujuan', api: 'jabatanTujuan' },
+      { form: 'penunjukanKepada', api: 'kepadaYth' },
+      { form: 'penunjukanDi', api: 'alamatTujuan' },
+      { form: 'penunjukanPerihal', api: 'perihal' },
+      { form: 'penunjukanTanggalPenawaran', api: 'tanggalSuratPenawaran', tipe: 'date' },
+      { form: 'penunjukanNilaiNegosiasi', api: 'hasilNegosiasiHarga', tipe: 'rupiah' },
+      { form: 'penunjukanKeteranganTindakLanjut', api: 'keteranganTindakLanjut' },
+      { form: 'penunjukanPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
 };
 
 const formatTanggalIndonesia = () =>

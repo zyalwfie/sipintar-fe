@@ -207,6 +207,25 @@ const PETA_DOKUMEN: Record<string, PetaDokumen> = {
       { form: 'baEvaluasiPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
+  'Undangan Klarifikasi dan Negosiasi': {
+    slug: 'undangan-klarifikasi-dan-negosiasi',
+    fields: [
+      { form: 'uknLampiran', api: 'lampiran' },
+      { form: 'uknTempatSurat', api: 'tempatSurat' },
+      { form: 'uknTanggalSurat', api: 'tanggalSurat', tipe: 'date' },
+      { form: 'uknKepadaJabatan', api: 'jabatanPenerima' },
+      { form: 'uknNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'uknAlamat', api: 'alamat' },
+      { form: 'uknPerihal', api: 'perihal' },
+      { form: 'uknPekerjaan', api: 'pekerjaan' },
+      { form: 'uknWaktu', api: 'waktu', tipe: 'time' },
+      { form: 'uknHari', api: 'hariTanggalPelaksanaan', tipe: 'date' },
+      { form: 'uknTempat', api: 'tempat' },
+      { form: 'uknParagrafPembuka', api: 'paragrafPembuka' },
+      { form: 'uknParagrafPenutup', api: 'paragrafPenutup' },
+      { form: 'uknPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
 };
 
 const formatTanggalIndonesia = () =>

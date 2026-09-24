@@ -147,6 +147,18 @@ const PETA_DOKUMEN: Record<string, PetaDokumen> = {
       { form: 'beritaPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
+  'Bukti Pengambilan Dokumen Pengadaan': {
+    slug: 'bukti-pengambilan-dokumen-pengadaan',
+    fields: [
+      { form: 'buktiPekerjaan', api: 'pekerjaan' },
+      { form: 'buktiTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'buktiWaktu', api: 'waktu', tipe: 'time' },
+      { form: 'buktiNamaPerusahaan', api: 'namaPerusahaan' },
+      { form: 'buktiNamaPejabatPerusahaan', api: 'namaPejabatPerusahaan' },
+      { form: 'buktiJabatanPejabat', api: 'jabatanPejabat' },
+      { form: 'buktiPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
 };
 
 const formatTanggalIndonesia = () =>

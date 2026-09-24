@@ -122,6 +122,31 @@ const PETA_DOKUMEN: Record<string, PetaDokumen> = {
       { form: 'penandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
+  'Berita Acara Penjelasan Pekerjaan': {
+    slug: 'berita-acara-penjelasan-pekerjaan',
+    fields: [
+      { form: 'beritaTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'beritaPukul', api: 'pukul', tipe: 'time' },
+      { form: 'beritaTempat', api: 'tempat' },
+      { form: 'beritaPeserta', api: 'peserta' },
+      { form: 'beritaNamaPenjelasanPekerjaan', api: 'namaPenjelasanPekerjaan' },
+      { form: 'beritaRapatDipimpinPpk', api: 'pimpinanRapatPpkId', tipe: 'pegawai' },
+      {
+        form: 'beritaPenjelasanAdministrasiPpbj',
+        api: 'pemberiPenjelasanUmumId',
+        tipe: 'pegawai',
+      },
+      {
+        form: 'beritaPenjelasanTeknikPpbj',
+        api: 'pemberiPenjelasanTeknikId',
+        tipe: 'pegawai',
+      },
+      { form: 'beritaRapatTanyaJawab', api: 'pemimpinTanyaJawabId', tipe: 'pegawai' },
+      { form: 'beritaKeteranganAwal', api: 'keteranganAwal' },
+      { form: 'beritaKeteranganTujuan', api: 'keteranganTujuan' },
+      { form: 'beritaPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
 };
 
 const formatTanggalIndonesia = () =>
@@ -2860,7 +2885,7 @@ const ProcurementDocument = () => {
                   <PbjSelect
                     label="Rapat dipimpin oleh PPK"
                     value={form.beritaRapatDipimpinPpk}
-                    options={selectedPengadaan.pbj}
+                    options={selectedPengadaan.ppk}
                     onChange={(value) =>
                       updateForm('beritaRapatDipimpinPpk', value)
                     }

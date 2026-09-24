@@ -191,6 +191,22 @@ const PETA_DOKUMEN: Record<string, PetaDokumen> = {
       { form: 'tandaTerimaPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
+  'Berita Acara Evaluasi Dokumen': {
+    slug: 'berita-acara-evaluasi-dokumen',
+    fields: [
+      { form: 'baEvaluasiTanggalDokumen', api: 'tanggalEvaluasiDokumen', tipe: 'date' },
+      { form: 'baEvaluasiNamaPekerjaan', api: 'namaPekerjaan' },
+      { form: 'baEvaluasiNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'baEvaluasiNomorBaPemasukan', api: 'nomorBaPemasukanDokumen' },
+      { form: 'baEvaluasiNilaiPenawaran', api: 'nilaiPenawaran', tipe: 'rupiah' },
+      { form: 'baEvaluasiJadwalPelaksanaan', api: 'jadwalPelaksanaanPekerjaan' },
+      { form: 'baEvaluasiKualifikasiSiup', api: 'kualifikasiSiupNib' },
+      { form: 'baEvaluasiKualifikasiNpwp', api: 'kualifikasiNpwp' },
+      { form: 'baEvaluasiKualifikasiKtp', api: 'kualifikasiKtp' },
+      { form: 'baEvaluasiKualifikasiKswp', api: 'kualifikasiKswp' },
+      { form: 'baEvaluasiPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
 };
 
 const formatTanggalIndonesia = () =>

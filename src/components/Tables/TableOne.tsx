@@ -11,8 +11,19 @@ import {
 } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { getApiErrorMessage, pengadaanApi } from '../../api';
+import {
+  DAFTAR_JENIS_DOKUMEN,
+  JENIS_DOKUMEN_LABEL,
+  getApiErrorMessage,
+  pengadaanApi,
+} from '../../api';
 import type { Pengadaan, PengadaanDetail } from '../../api';
+
+/** Posisi 1-based dokumen sesuai urutan UI (untuk route Buka Dokumen). */
+const posisiDokumen = (jenis: string) => {
+  const index = DAFTAR_JENIS_DOKUMEN.findIndex((item) => item.jenis === jenis);
+  return index === -1 ? 1 : index + 1;
+};
 
 type ModalMode = 'view' | 'delete';
 
@@ -538,6 +549,9 @@ const TableOne = () => {
                               <thead>
                                 <tr className="bg-gray-2 text-left dark:bg-meta-4">
                                   <th className="px-4 py-3 text-xs font-medium uppercase text-black dark:text-white">
+                                    Dokumen
+                                  </th>
+                                  <th className="px-4 py-3 text-xs font-medium uppercase text-black dark:text-white">
                                     Nomor Dokumen
                                   </th>
                                   <th className="px-4 py-3 text-xs font-medium uppercase text-black dark:text-white">
@@ -549,11 +563,15 @@ const TableOne = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {detail.dokumen.map((dokumen, index) => (
+                                {detail.dokumen.map((dokumen) => (
                                   <tr
                                     key={dokumen.id}
                                     className="border-b border-stroke last:border-b-0 dark:border-strokedark"
                                   >
+                                    <td className="px-4 py-3 text-sm text-black dark:text-white">
+                                      {JENIS_DOKUMEN_LABEL[dokumen.jenis] ??
+                                        dokumen.jenis}
+                                    </td>
                                     <td className="px-4 py-3 text-sm font-semibold text-black dark:text-white">
                                       {dokumen.nomorDokumen ?? '-'}
                                     </td>
@@ -563,9 +581,9 @@ const TableOne = () => {
                                     <td className="px-4 py-3">
                                       <div className="flex justify-center">
                                         <Link
-                                          to={`/pengadaan/${detail.id}/dokumen/${
-                                            index + 1
-                                          }/buka`}
+                                          to={`/pengadaan/${detail.id}/dokumen/${posisiDokumen(
+                                            dokumen.jenis
+                                          )}/buka`}
                                           className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-primary/10 hover:text-primary dark:text-bodydark"
                                           aria-label="Buka dokumen"
                                           title="Buka Dokumen"

@@ -1,40 +1,38 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-
-const DUMMY_EMAIL = 'admin@bprntb.co.id';
-const DUMMY_PASSWORD = 'admin!@#';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { isAuthenticated, login } from '../../utils/auth';
 
 const SignIn: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  if (isAuthenticated()) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  const from = (location.state as { from?: string })?.from || '/dashboard';
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setErrorMessage('');
+    setIsSubmitting(true);
 
-    if (email.trim() === DUMMY_EMAIL && password === DUMMY_PASSWORD) {
-      const authData = JSON.stringify({
-        email: DUMMY_EMAIL,
-        loggedInAt: new Date().toISOString(),
-      });
+    const result = await login(email.trim(), password, rememberMe);
 
-      if (rememberMe) {
-        localStorage.setItem('sipintar-auth', authData);
-        sessionStorage.removeItem('sipintar-auth');
-      } else {
-        sessionStorage.setItem('sipintar-auth', authData);
-        localStorage.removeItem('sipintar-auth');
-      }
+    setIsSubmitting(false);
 
-      setErrorMessage('');
-      navigate('/dashboard');
+    if (result.success) {
+      navigate(from, { replace: true });
       return;
     }
 
-    setErrorMessage('Email atau password tidak sesuai.');
+    setErrorMessage(result.message || 'Email atau password tidak sesuai.');
   };
 
   return (
@@ -198,8 +196,9 @@ const SignIn: React.FC = () => {
 
                 <input
                   type="submit"
-                  value="Masuk"
-                  className="w-full cursor-pointer rounded-lg border border-primary bg-primary p-4 font-medium text-white transition hover:bg-opacity-90"
+                  value={isSubmitting ? 'Memproses...' : 'Masuk'}
+                  disabled={isSubmitting}
+                  className="w-full cursor-pointer rounded-lg border border-primary bg-primary p-4 font-medium text-white transition hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
                 />
               </form>
             </div>

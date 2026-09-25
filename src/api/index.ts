@@ -1,4 +1,6 @@
-export { apiClient, getApiErrorMessage, TOKEN_KEY } from './client';
+export { apiClient, getApiErrorMessage } from './client';
+export { akunApi } from './akun';
+export type { GantiKataSandiInput, PerbaruiProfilInput } from './akun';
 export { pegawaiApi } from './pegawai';
 export { pengadaanApi } from './pengadaan';
 export { dokumenApi, DOKUMEN_SLUG } from './dokumen';

@@ -12,6 +12,7 @@ import ProcurementDocument from './pages/ProcurementDocument';
 import ProcurementList from './pages/ProcurementList';
 import UserManagement from './pages/UserManagement';
 import DefaultLayout from './layout/DefaultLayout';
+import ProtectedRoute from './routes/ProtectedRoute';
 
 function App() {
   const [loading, setLoading] = useState<boolean>(true);
@@ -38,87 +39,85 @@ function App() {
           </>
         }
       />
-      <Route
-        path="/dashboard"
-        element={
-          <>
-            <PageTitle title={`Dashboard | ${appName}`} />
-            <ECommerce />
-          </>
-        }
-      />
-      <Route
-        path="/manajemen-pengguna"
-        element={
-          <>
-            <PageTitle title={`Manajemen Pengguna | ${appName}`} />
-            <UserManagement />
-          </>
-        }
-      />
-      <Route
-        path="/pengadaan"
-        element={
-          <>
-            <PageTitle title={`Pengadaan | ${appName}`} />
-            <ProcurementList />
-          </>
-        }
-      />
-      <Route
-        path="/pengadaan/tambah"
-        element={
-          <>
-            <PageTitle title={`Tambah Pengadaan | ${appName}`} />
-            <ProcurementCreate />
-          </>
-        }
-      />
-      <Route
-        path="/pengadaan/edit/:id"
-        element={
-          <>
-            <PageTitle title={`Edit Pengadaan | ${appName}`} />
-            <ProcurementCreate mode="edit" />
-          </>
-        }
-      />
-      <Route
-        path="/pengadaan/:id/dokumen/:documentIndex/:action"
-        element={
-          <>
-            <PageTitle title={`Dokumen Pengadaan | ${appName}`} />
-            <ProcurementDocument />
-          </>
-        }
-      />
-      <Route
-        path="/glossary/data-pegawai"
-        element={
-          <>
-            <PageTitle title={`Data Pegawai | ${appName}`} />
-            <DataPegawai />
-          </>
-        }
-      />
-      <Route
-        path="/glossary/template-dokumen"
-        element={
-          <>
-            <PageTitle title={`Template Dokumen | ${appName}`} />
-            <DocumentTemplate />
-          </>
-        }
-      />
-      <Route
-        path="/auth/signin"
-        element={<Navigate to="/" replace />}
-      />
-      <Route
-        path="/auth/*"
-        element={<Navigate to="/" replace />}
-      />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+      <Route element={<ProtectedRoute />}>
+        <Route
+          path="/dashboard"
+          element={
+            <>
+              <PageTitle title={`Dashboard | ${appName}`} />
+              <ECommerce />
+            </>
+          }
+        />
+        <Route
+          path="/manajemen-pengguna"
+          element={
+            <>
+              <PageTitle title={`Manajemen Pengguna | ${appName}`} />
+              <UserManagement />
+            </>
+          }
+        />
+        <Route
+          path="/pengadaan"
+          element={
+            <>
+              <PageTitle title={`Pengadaan | ${appName}`} />
+              <ProcurementList />
+            </>
+          }
+        />
+        <Route
+          path="/pengadaan/tambah"
+          element={
+            <>
+              <PageTitle title={`Tambah Pengadaan | ${appName}`} />
+              <ProcurementCreate />
+            </>
+          }
+        />
+        <Route
+          path="/pengadaan/edit/:id"
+          element={
+            <>
+              <PageTitle title={`Edit Pengadaan | ${appName}`} />
+              <ProcurementCreate mode="edit" />
+            </>
+          }
+        />
+        <Route
+          path="/pengadaan/:id/dokumen/:documentIndex/:action"
+          element={
+            <>
+              <PageTitle title={`Dokumen Pengadaan | ${appName}`} />
+              <ProcurementDocument />
+            </>
+          }
+        />
+        <Route
+          path="/glossary/data-pegawai"
+          element={
+            <>
+              <PageTitle title={`Data Pegawai | ${appName}`} />
+              <DataPegawai />
+            </>
+          }
+        />
+        <Route
+          path="/glossary/template-dokumen"
+          element={
+            <>
+              <PageTitle title={`Template Dokumen | ${appName}`} />
+              <DocumentTemplate />
+            </>
+          }
+        />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      </Route>
+
+      <Route path="/auth/signin" element={<Navigate to="/" replace />} />
+      <Route path="/auth/*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 

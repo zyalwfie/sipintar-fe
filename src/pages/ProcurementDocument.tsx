@@ -4,10 +4,16 @@ import {
   FiDownload,
   FiEye,
   FiFileText,
+  FiCheckCircle,
+  FiAlertCircle,
+  FiLoader,
   FiLayout,
+  FiLoader,
+  FiSave,
   FiX,
 } from 'react-icons/fi';
 import { Link, useParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import {
   DefaultDocumentImages,
   DocumentAssetKind,
@@ -19,6 +25,8 @@ import {
   loadDefaultDocumentImages,
   saveDocumentHeaderFooterVisibility,
 } from '../utils/documentTemplate';
+import { dokumenApi, DOKUMEN_SLUG, getApiErrorMessage, pengadaanApi } from '../api';
+import type { NilaiEfektif } from '../api';
 
 const dokumenPelaksana = [
   'Surat Undangan Pengadaan',
@@ -32,107 +40,280 @@ const dokumenPelaksana = [
   'Berita Acara Hasil Pengadaan Langsung',
   'Penunjukan Penyedia Pengadaan',
   'SPK atau Kontrak Kerja',
+  // 4 dibawh belum ada template
   'SPMK',
   'Berita Acara Pemeriksaan Pekerjaan',
   'Berita Acara Serah Terima Pekerjaan',
   'Pengajuan Pembayaran',
 ];
 
-const pengadaanTitles = [
-  'Pengadaan Laptop Operasional Kantor',
-  'Pengadaan Meja dan Kursi Ruang Rapat',
-  'Pengadaan Lisensi Software Akuntansi',
-  'Pengadaan Kendaraan Operasional Cabang',
-  'Pengadaan Perangkat Jaringan Internal',
-];
+// Data pengadaan (penyedia + pegawai yang ditugaskan) hasil adaptasi
+// dari GET /pengadaan/:id untuk dipakai template dokumen.
+type DokumenPegawaiView = {
+  id: string;
+  nama: string;
+  nrp: string;
+  jabatan?: string;
+};
 
-const ppkPengadaan = [
-  { nama: 'I Made Surya Pratama', nrp: '19870412' },
-  { nama: 'Ayu Lestari Dewi', nrp: '19940718' },
-];
+type DokumenPengadaanView = {
+  namaPenyedia: string;
+  namaDirektur: string;
+  jabatanDirektur: string;
+  alamat: string;
+  email: string;
+  npwp: string;
+  judulPengadaan: string;
+  hps: string;
+  hasilNegosiasi: string;
+  tempatPenandatanganan: string;
+  ppk: DokumenPegawaiView[];
+  pbj: DokumenPegawaiView[];
+  penandaTangan: DokumenPegawaiView[];
+};
 
-const pengadaanData = [
-  {
-    namaPenyedia: 'PT Nusa Teknologi Mandiri',
-    namaDirektur: 'I Gede Wirawan',
-    jabatanDirektur: 'Direktur',
-    alamat: 'Jl. Langko No. 12, Mataram',
-    email: 'admin.1@vendor.co.id',
-    judulPengadaan: 'Pengadaan Laptop Operasional Kantor',
-    hps: '185000000',
-    hasilNegosiasi: '172500000',
-    tempatPenandatanganan: 'Mataram',
-    ppk: ppkPengadaan,
-    pbj: [
-      { nama: 'Ni Putu Maharani', nrp: '19910622' },
-      { nama: 'Muhammad Rizal Fahri', nrp: '19891105' },
+const emptyPengadaanView: DokumenPengadaanView = {
+  namaPenyedia: '',
+  namaDirektur: '',
+  jabatanDirektur: '',
+  alamat: '',
+  email: '',
+  npwp: '',
+  judulPengadaan: '',
+  hps: '',
+  hasilNegosiasi: '',
+  tempatPenandatanganan: '',
+  ppk: [],
+  pbj: [],
+  penandaTangan: [],
+};
+
+// ======================================================
+// PEMETAAN FIELD FORM <-> FIELD API PER DOKUMEN
+// ======================================================
+//
+// Setiap dokumen memetakan field form ke field body API.
+// `tipe` menentukan transformasi saat memuat nilaiEfektif
+// dan saat menyimpan. Diisi bertahap per dokumen.
+type TipeField = 'text' | 'date' | 'time' | 'rupiah' | 'pegawai';
+type PetaField = { form: string; api: string; tipe?: TipeField };
+type PetaDokumen = { slug: string; fields: PetaField[] };
+
+const PETA_DOKUMEN: Record<string, PetaDokumen> = {
+  'Surat Undangan Pengadaan': {
+    slug: 'surat-undangan-pengadaan',
+    fields: [
+      { form: 'lampiran', api: 'lampiran' },
+      { form: 'kepadaYth', api: 'kepadaYth' },
+      { form: 'di', api: 'alamatTujuan' },
+      { form: 'email', api: 'email' },
+      { form: 'perihal', api: 'perihal' },
+      { form: 'namaPaketPekerjaan', api: 'namaPaketPekerjaan' },
+      { form: 'nilaiTotalHps', api: 'nilaiTotalHps', tipe: 'rupiah' },
+      { form: 'tempatSurat', api: 'tempatSurat' },
+      { form: 'tanggalSurat', api: 'tanggalSurat', tipe: 'date' },
+      { form: 'hariPelaksanaan', api: 'hariPelaksanaan', tipe: 'date' },
+      { form: 'waktuMulai', api: 'waktuPelaksanaanMulai', tipe: 'time' },
+      { form: 'waktuSelesai', api: 'waktuPelaksanaanSelesai', tipe: 'time' },
+      { form: 'tempatPelaksanaan', api: 'tempatPelaksanaan' },
+      { form: 'namaKegiatan', api: 'namaKegiatan' },
+      { form: 'tanggalKegiatan', api: 'tanggalKegiatan', tipe: 'date' },
+      { form: 'waktuKegiatanMulai', api: 'waktuKegiatanMulai', tipe: 'time' },
+      { form: 'waktuKegiatanSelesai', api: 'waktuKegiatanSelesai', tipe: 'time' },
+      { form: 'keteranganTujuan', api: 'keteranganTujuanDokumen' },
+      { form: 'keteranganPermohonan', api: 'keteranganPermohonan' },
+      { form: 'penandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
-  {
-    namaPenyedia: 'CV Sinar Berkah Abadi',
-    namaDirektur: 'Hendra Saputra',
-    jabatanDirektur: 'Direktur',
-    alamat: 'Jl. Pejanggik No. 45, Mataram',
-    email: 'admin.2@vendor.co.id',
-    judulPengadaan: 'Pengadaan Meja dan Kursi Ruang Rapat',
-    hps: '72500000',
-    hasilNegosiasi: '60000000',
-    tempatPenandatanganan: 'Mataram',
-    ppk: ppkPengadaan,
-    pbj: [
-      { nama: 'Ni Putu Maharani', nrp: '19910622' },
-      { nama: 'Siti Rahmawati', nrp: '19920914' },
+  'Berita Acara Penjelasan Pekerjaan': {
+    slug: 'berita-acara-penjelasan-pekerjaan',
+    fields: [
+      { form: 'beritaTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'beritaPukul', api: 'pukul', tipe: 'time' },
+      { form: 'beritaTempat', api: 'tempat' },
+      { form: 'beritaPeserta', api: 'peserta' },
+      { form: 'beritaNamaPenjelasanPekerjaan', api: 'namaPenjelasanPekerjaan' },
+      { form: 'beritaRapatDipimpinPpk', api: 'pimpinanRapatPpkId', tipe: 'pegawai' },
+      {
+        form: 'beritaPenjelasanAdministrasiPpbj',
+        api: 'pemberiPenjelasanUmumId',
+        tipe: 'pegawai',
+      },
+      {
+        form: 'beritaPenjelasanTeknikPpbj',
+        api: 'pemberiPenjelasanTeknikId',
+        tipe: 'pegawai',
+      },
+      { form: 'beritaRapatTanyaJawab', api: 'pemimpinTanyaJawabId', tipe: 'pegawai' },
+      { form: 'beritaKeteranganAwal', api: 'keteranganAwal' },
+      { form: 'beritaKeteranganTujuan', api: 'keteranganTujuan' },
+      { form: 'beritaPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
-  {
-    namaPenyedia: 'PT Prima Solusi Digital',
-    namaDirektur: 'Dewi Kartika Sari',
-    jabatanDirektur: 'Direktur',
-    alamat: 'Jl. Sriwijaya No. 18, Mataram',
-    email: 'admin.3@vendor.co.id',
-    judulPengadaan: 'Pengadaan Lisensi Software Akuntansi',
-    hps: '128750000',
-    hasilNegosiasi: '116250000',
-    tempatPenandatanganan: 'Mataram',
-    ppk: ppkPengadaan,
-    pbj: [
-      { nama: 'Muhammad Rizal Fahri', nrp: '19891105' },
-      { nama: 'Gede Arya Wiratama', nrp: '19850330' },
+  'Bukti Pengambilan Dokumen Pengadaan': {
+    slug: 'bukti-pengambilan-dokumen-pengadaan',
+    fields: [
+      { form: 'buktiPekerjaan', api: 'pekerjaan' },
+      { form: 'buktiTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'buktiWaktu', api: 'waktu', tipe: 'time' },
+      { form: 'buktiNamaPerusahaan', api: 'namaPerusahaan' },
+      { form: 'buktiNamaPejabatPerusahaan', api: 'namaPejabatPerusahaan' },
+      { form: 'buktiJabatanPejabat', api: 'jabatanPejabat' },
+      { form: 'buktiPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
-  {
-    namaPenyedia: 'CV Karya Logistik Nusantara',
-    namaDirektur: 'Fajar Nugroho',
-    jabatanDirektur: 'Direktur',
-    alamat: 'Jl. Sandubaya No. 7, Mataram',
-    email: 'admin.4@vendor.co.id',
-    judulPengadaan: 'Pengadaan Kendaraan Operasional Cabang',
-    hps: '342000000',
-    hasilNegosiasi: '329500000',
-    tempatPenandatanganan: 'Mataram',
-    ppk: ppkPengadaan,
-    pbj: [
-      { nama: 'Ayu Lestari Dewi', nrp: '19940718' },
-      { nama: 'Ni Putu Maharani', nrp: '19910622' },
+  'Berita Acara Pemasukan dan Pembukaan Dokumen': {
+    slug: 'berita-acara-pemasukan-dan-pembukaan-dokumen',
+    fields: [
+      { form: 'baPemasukanTanggalDokumen', api: 'tanggalBeritaAcara', tipe: 'date' },
+      { form: 'baPemasukanPukul', api: 'pukul', tipe: 'time' },
+      { form: 'baPemasukanNamaPekerjaan', api: 'pengadaanPekerjaan' },
+      { form: 'baPemasukanPejabatPengadaan', api: 'pejabatPengadaan' },
+      { form: 'baPemasukanPenyedia', api: 'penyediaBarangJasa' },
+      {
+        form: 'baPemasukanTanggalPemasukan',
+        api: 'tanggalPemasukanDokumenPenawaran',
+        tipe: 'date',
+      },
+      { form: 'baPemasukanMasaBerlaku', api: 'masaBerlakuPenawaran' },
+      { form: 'baPemasukanNilaiPenawaran', api: 'nilaiPenawaran', tipe: 'rupiah' },
+      { form: 'baPemasukanRincianHarga', api: 'rincianHarga' },
+      { form: 'baPemasukanKeterangan', api: 'keterangan' },
+      { form: 'baPemasukanPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
-  {
-    namaPenyedia: 'PT Citra Sarana Sejahtera',
-    namaDirektur: 'Agus Mahendra',
-    jabatanDirektur: 'Direktur',
-    alamat: 'Jl. Udayana No. 22, Mataram',
-    email: 'admin.5@vendor.co.id',
-    judulPengadaan: 'Pengadaan Perangkat Jaringan Internal',
-    hps: '96500000',
-    hasilNegosiasi: '84000000',
-    tempatPenandatanganan: 'Mataram',
-    ppk: ppkPengadaan,
-    pbj: [
-      { nama: 'Siti Rahmawati', nrp: '19920914' },
-      { nama: 'Muhammad Rizal Fahri', nrp: '19891105' },
+  'Tanda Terima Pemasukan Dokumen': {
+    slug: 'tanda-terima-pemasukan-dokumen',
+    fields: [
+      { form: 'tandaTerimaPekerjaan', api: 'pekerjaan' },
+      { form: 'tandaTerimaTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'tandaTerimaWaktu', api: 'waktu', tipe: 'time' },
+      { form: 'tandaTerimaNamaPerusahaan', api: 'namaPerusahaan' },
+      { form: 'tandaTerimaNamaPejabat', api: 'namaPejabatPerwakilan' },
+      { form: 'tandaTerimaJabatan', api: 'jabatan' },
+      { form: 'tandaTerimaPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
-];
+  'Berita Acara Evaluasi Dokumen': {
+    slug: 'berita-acara-evaluasi-dokumen',
+    fields: [
+      { form: 'baEvaluasiTanggalDokumen', api: 'tanggalEvaluasiDokumen', tipe: 'date' },
+      { form: 'baEvaluasiNamaPekerjaan', api: 'namaPekerjaan' },
+      { form: 'baEvaluasiNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'baEvaluasiNomorBaPemasukan', api: 'nomorBaPemasukanDokumen' },
+      { form: 'baEvaluasiNilaiPenawaran', api: 'nilaiPenawaran', tipe: 'rupiah' },
+      { form: 'baEvaluasiJadwalPelaksanaan', api: 'jadwalPelaksanaanPekerjaan' },
+      { form: 'baEvaluasiKualifikasiSiup', api: 'kualifikasiSiupNib' },
+      { form: 'baEvaluasiKualifikasiNpwp', api: 'kualifikasiNpwp' },
+      { form: 'baEvaluasiKualifikasiKtp', api: 'kualifikasiKtp' },
+      { form: 'baEvaluasiKualifikasiKswp', api: 'kualifikasiKswp' },
+      { form: 'baEvaluasiPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
+  'Undangan Klarifikasi dan Negosiasi': {
+    slug: 'undangan-klarifikasi-dan-negosiasi',
+    fields: [
+      { form: 'uknLampiran', api: 'lampiran' },
+      { form: 'uknTempatSurat', api: 'tempatSurat' },
+      { form: 'uknTanggalSurat', api: 'tanggalSurat', tipe: 'date' },
+      { form: 'uknKepadaJabatan', api: 'jabatanPenerima' },
+      { form: 'uknNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'uknAlamat', api: 'alamat' },
+      { form: 'uknPerihal', api: 'perihal' },
+      { form: 'uknPekerjaan', api: 'pekerjaan' },
+      { form: 'uknWaktu', api: 'waktu', tipe: 'time' },
+      { form: 'uknHari', api: 'hariTanggalPelaksanaan', tipe: 'date' },
+      { form: 'uknTempat', api: 'tempat' },
+      { form: 'uknParagrafPembuka', api: 'paragrafPembuka' },
+      { form: 'uknParagrafPenutup', api: 'paragrafPenutup' },
+      { form: 'uknPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
+  'Berita Acara Klarifikasi dan Negosiasi Dokumen': {
+    slug: 'berita-acara-klarifikasi-dan-negosiasi-dokumen',
+    fields: [
+      { form: 'baknTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'baknTempat', api: 'tempat' },
+      { form: 'baknNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'baknPekerjaan', api: 'untukPekerjaan' },
+      { form: 'baknHasil1', api: 'hasilKlarifikasiTeknis' },
+      { form: 'baknHasil2', api: 'hasilNegosiasiHarga' },
+      { form: 'baknHasil3', api: 'hasilPembuktianKualifikasi' },
+      { form: 'baknKeteranganPenutup', api: 'keteranganPenutup' },
+      { form: 'baknNamaDirektur', api: 'namaDirekturPenyedia' },
+      { form: 'baknPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
+  'Berita Acara Hasil Pengadaan Langsung': {
+    slug: 'berita-acara-hasil-pengadaan-langsung',
+    fields: [
+      { form: 'bahplTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'bahplPekerjaan', api: 'pekerjaan' },
+      { form: 'bahplHps', api: 'hps', tipe: 'rupiah' },
+      { form: 'bahplUnsurEvaluasi', api: 'unsurEvaluasi' },
+      { form: 'bahplNamaPerusahaan', api: 'namaPerusahaan' },
+      { form: 'bahplHargaPenawaran', api: 'hargaPenawaran', tipe: 'rupiah' },
+      { form: 'bahplEvalAdministrasi', api: 'evaluasiAdministrasi' },
+      { form: 'bahplEvalTeknis', api: 'evaluasiTeknis' },
+      { form: 'bahplEvalHarga', api: 'evaluasiHarga' },
+      { form: 'bahplEvalKualifikasi', api: 'evaluasiKualifikasi' },
+      { form: 'bahplKet', api: 'keteranganEvaluasi' },
+      { form: 'bahplNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'bahplNamaDirektur', api: 'namaDirekturUtama' },
+      { form: 'bahplAlamat', api: 'alamatPerusahaan' },
+      { form: 'bahplNpwp', api: 'npwp' },
+      { form: 'bahplHargaNegosiasi', api: 'hargaHasilNegosiasi', tipe: 'rupiah' },
+      { form: 'bahplKeteranganPenutup', api: 'keteranganPenutup' },
+      { form: 'bahplPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
+  'Penunjukan Penyedia Pengadaan': {
+    slug: 'penunjukan-penyedia-pengadaan',
+    fields: [
+      { form: 'penunjukanTempat', api: 'tempatSurat' },
+      { form: 'penunjukanTanggal', api: 'tanggalSurat', tipe: 'date' },
+      { form: 'penunjukanLampiran', api: 'lampiran' },
+      { form: 'penunjukanJabatanTujuan', api: 'jabatanTujuan' },
+      { form: 'penunjukanKepada', api: 'kepadaYth' },
+      { form: 'penunjukanDi', api: 'alamatTujuan' },
+      { form: 'penunjukanPerihal', api: 'perihal' },
+      { form: 'penunjukanTanggalPenawaran', api: 'tanggalSuratPenawaran', tipe: 'date' },
+      { form: 'penunjukanNilaiNegosiasi', api: 'hasilNegosiasiHarga', tipe: 'rupiah' },
+      { form: 'penunjukanKeteranganTindakLanjut', api: 'keteranganTindakLanjut' },
+      { form: 'penunjukanPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
+  'SPK atau Kontrak Kerja': {
+    slug: 'spk-atau-kontrak-kerja',
+    fields: [
+      { form: 'spkTanggal', api: 'tanggalSpk', tipe: 'date' },
+      { form: 'spkPaketPengadaan', api: 'paketPengadaan' },
+      { form: 'spkNomorSuratUndangan', api: 'nomorSuratUndangan' },
+      { form: 'spkTanggalSuratUndangan', api: 'tanggalSuratUndangan', tipe: 'date' },
+      { form: 'spkSumberDana', api: 'sumberDana' },
+      { form: 'spkNilaiKontrak', api: 'nilaiKontrak', tipe: 'rupiah' },
+      { form: 'spkPerusahaanPenyedia', api: 'namaPerusahaanPenyedia' },
+      { form: 'spkNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'spkJabatanPenyedia', api: 'jabatanPenyedia' },
+      { form: 'spkPpk', api: 'penandaTanganPpkId', tipe: 'pegawai' },
+    ],
+  },
+};
+
+type ProcurementViewData = (typeof pengadaanData)[number];
+
+type ApiResponse = {
+  data?: Record<string, any> | null;
+  meta?: { resolved?: Record<string, any> };
+};
+
+const API_BASE_URL = 'http://localhost:4000/api';
+
+const toDateInput = (value: unknown) =>
+  typeof value === 'string' && value ? value.slice(0, 10) : '';
+
+const toTimeInput = (value: unknown) =>
+  typeof value === 'string' && value ? value.slice(0, 5) : '';
 
 const formatTanggalIndonesia = () =>
   new Intl.DateTimeFormat('id-ID', {
@@ -415,7 +596,7 @@ const PbjSelect = ({
 }: {
   label: string;
   value: string;
-  options: { nama: string; nrp: string }[];
+  options: { id: string; nama: string; nrp: string }[];
   onChange: (value: string) => void;
 }) => (
   <div>
@@ -427,8 +608,9 @@ const PbjSelect = ({
       onChange={(event) => onChange(event.target.value)}
       className="w-full rounded border border-stroke bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white"
     >
+      <option value="">Pilih pegawai</option>
       {options.map((pegawai) => (
-        <option key={pegawai.nrp} value={pegawai.nrp}>
+        <option key={pegawai.id} value={pegawai.id}>
           {pegawai.nama} - NRP : {pegawai.nrp}
         </option>
       ))}
@@ -537,11 +719,14 @@ const ProcurementDocument = () => {
   const selectedIndex = Math.max(Number(documentIndex ?? 1) - 1, 0);
   const documentName =
     dokumenPelaksana[selectedIndex] ?? dokumenPelaksana[0];
-  const selectedPengadaan =
-    pengadaanData[Math.max(Number(id ?? 1) - 1, 0)] ?? pengadaanData[0];
-  const pengadaanTitle =
-    pengadaanTitles[Math.max(Number(id ?? 1) - 1, 0)] ??
-    selectedPengadaan.judulPengadaan;
+  const slug = DOKUMEN_SLUG[selectedIndex] ?? null;
+  const [selectedPengadaan, setSelectedPengadaan] =
+    useState<DokumenPengadaanView>(emptyPengadaanView);
+  const [memuat, setMemuat] = useState(true);
+  const [muatError, setMuatError] = useState('');
+  const [menyimpan, setMenyimpan] = useState(false);
+  const [sudahDisimpan, setSudahDisimpan] = useState(false);
+  const pengadaanTitle = selectedPengadaan.judulPengadaan;
   const isPreview = action === 'lihat';
   const isSuratUndangan =
     !isPreview && documentName === 'Surat Undangan Pengadaan';
@@ -570,19 +755,22 @@ const ProcurementDocument = () => {
     getNomorDokumen(selectedIndex)
   );
   const [form, setForm] = useState({
+    // ========================================================
+    // DOKUMEN 001: SURAT UNDANGAN PENGADAAN (InvitationLetter)
+    // ========================================================
     lampiran: '1 (satu) berkas',
-    kepadaYth: selectedPengadaan.namaPenyedia,
-    di: selectedPengadaan.alamat,
-    email: selectedPengadaan.email,
+    kepadaYth: selectedPengadaan.namaPenyedia, // [Provider.name]
+    di: selectedPengadaan.alamat, // [Provider.address]
+    email: selectedPengadaan.email, // [Provider.email]
     perihal: documentName,
-    namaPaketPekerjaan: selectedPengadaan.judulPengadaan,
-    nilaiTotalHps: selectedPengadaan.hps,
-    tempatSurat: selectedPengadaan.tempatPenandatanganan,
+    namaPaketPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
+    nilaiTotalHps: selectedPengadaan.hps, // [Procurement.estimatedPriceIncludingTax]
+    tempatSurat: selectedPengadaan.tempatPenandatanganan, // [Procurement.signingPlace]
     tanggalSurat: '2026-07-29',
     hariPelaksanaan: '2026-07-29',
     waktuMulai: '10:00',
     waktuSelesai: '12:00',
-    tempatPelaksanaan: selectedPengadaan.tempatPenandatanganan,
+    tempatPelaksanaan: selectedPengadaan.tempatPenandatanganan, // [Procurement.signingPlace]
     namaKegiatan: 'Penjelasan Pekerjaan',
     tanggalKegiatan: '2026-07-31',
     waktuKegiatanMulai: '10:00',
@@ -591,65 +779,89 @@ const ProcurementDocument = () => {
       'Dengan ini mengharapkan kehadiran Saudara untuk mengikuti Penjelasan Pekerjaan, yang akan diadakan pada : ',
     keteranganPermohonan:
       'Saudara diminta untuk memasukkan penawaran administrasi, teknis dan harga secara langsung dan melaksanakan klarifikasi dan Negosiasi pada : ',
-    penandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    penandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =========================================================================
+    // DOKUMEN 002: BERITA ACARA PENJELASAN PEKERJAAN (WorkExplanationMinutes)
+    // =========================================================================
     beritaTanggal: '2026-07-29',
     beritaPukul: '11:00',
-    beritaTempat: selectedPengadaan.tempatPenandatanganan,
-    beritaPeserta: selectedPengadaan.judulPengadaan,
-    beritaNamaPenjelasanPekerjaan: selectedPengadaan.judulPengadaan,
+    beritaTempat: selectedPengadaan.tempatPenandatanganan, // [Procurement.signingPlace]
+    beritaPeserta: selectedPengadaan.judulPengadaan, // [Procurement.participants]
+    beritaNamaPenjelasanPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     beritaKeteranganAwal: 'Dengan hasil terlampir sebagai berikut : ',
-    beritaRapatDipimpinPpk: selectedPengadaan.pbj[0]?.nrp ?? '',
-    beritaPenjelasanAdministrasiPpbj: selectedPengadaan.pbj[0]?.nrp ?? '',
-    beritaPenjelasanTeknikPpbj: selectedPengadaan.pbj[0]?.nrp ?? '',
-    beritaRapatTanyaJawab: selectedPengadaan.pbj[0]?.nrp ?? '',
+    beritaRapatDipimpinPpk: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi PPK]
+    beritaPenjelasanAdministrasiPpbj: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi PBJ]
+    beritaPenjelasanTeknikPpbj: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi PBJ]
+    beritaRapatTanyaJawab: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi PBJ]
     beritaKeteranganTujuan:
       'Penjelasan Pekerjaan ini ditutup pada Tanggal tersebut di atas pada pukul 11.00 WITA.\n\nSelanjutnya calon penyedia barang/jasa diminta segera memasukkan dokumen penawaran pada hari operasional kerja setelah penjelasan pekerjaan untuk diproses lebih lanjut oleh Pejabat Pengadaan barang/jasa sesuai dengan ketentuan yang berlaku.\n\nDemikian Berita Acara ini dibuat untuk dipergunakan sebagaimana mestinya.',
-    beritaPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
-    buktiPekerjaan: selectedPengadaan.judulPengadaan,
+    beritaPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =========================================================================
+    // DOKUMEN 003: BUKTI PENGAMBILAN DOKUMEN (DocumentCollectionReceipt)
+    // =========================================================================
+    buktiPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     buktiTanggal: '2026-07-30',
     buktiWaktu: '11:00',
-    buktiNamaPerusahaan: 'Muamalat Institute',
-    buktiNamaPejabatPerusahaan: 'Amien',
-    buktiJabatanPejabat: 'Direktur Eksekutif',
-    buktiPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    buktiNamaPerusahaan: 'Muamalat Institute', // [Provider.name]
+    buktiNamaPejabatPerusahaan: 'Amien', // [Provider.directorName]
+    buktiJabatanPejabat: 'Direktur Eksekutif', // [Provider.position]
+    buktiPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =========================================================================================
+    // DOKUMEN 004: BERITA ACARA PEMASUKAN DAN PEMBUKAAN DOKUMEN (DocumentSubmissionMinutes)
+    // =========================================================================================
     baPemasukanTanggalDokumen: '2026-07-31',
     baPemasukanPukul: '11:00',
-    baPemasukanNamaPekerjaan: selectedPengadaan.judulPengadaan,
+    baPemasukanNamaPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     baPemasukanPejabatPengadaan:
-      'Pejabat Pengadaan Barang/Jasa PT BPR NTB PERSERODA',
-    baPemasukanPenyedia: selectedPengadaan.namaPenyedia,
+      'Pejabat Pengadaan Barang/Jasa PT BPR NTB PERSERODA', // [Relasi PBJ]
+    baPemasukanPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
     baPemasukanTanggalPemasukan: '2026-07-30',
     baPemasukanMasaBerlaku: '7 (tujuh) hari kalender',
-    baPemasukanNilaiPenawaran: selectedPengadaan.hps,
+    baPemasukanNilaiPenawaran: selectedPengadaan.hps, // [Procurement.offeredPrice / HPS]
     baPemasukanRincianHarga: 'Ada',
     baPemasukanKeterangan: 'Lengkap',
-    baPemasukanPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
-    tandaTerimaPekerjaan: selectedPengadaan.judulPengadaan,
+    baPemasukanPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =====================================================================
+    // DOKUMEN 005: TANDA TERIMA PEMASUKAN DOKUMEN (DocumentSubmissionReceipt)
+    // =====================================================================
+    tandaTerimaPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     tandaTerimaTanggal: '2026-08-03',
     tandaTerimaWaktu: '11:00',
-    tandaTerimaNamaPerusahaan: selectedPengadaan.namaPenyedia,
-    tandaTerimaNamaPejabat: selectedPengadaan.namaDirektur,
-    tandaTerimaJabatan: 'Direktur',
-    tandaTerimaPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    tandaTerimaNamaPerusahaan: selectedPengadaan.namaPenyedia, // [Provider.name]
+    tandaTerimaNamaPejabat: selectedPengadaan.namaDirektur, // [Provider.directorName]
+    tandaTerimaJabatan: 'Direktur', // [Provider.position]
+    tandaTerimaPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =====================================================================
+    // DOKUMEN 006: BERITA ACARA EVALUASI DOKUMEN (DocumentEvaluationMinutes)
+    // =====================================================================
     baEvaluasiTanggalDokumen: '2026-08-03',
-    baEvaluasiNamaPekerjaan: selectedPengadaan.judulPengadaan,
-    baEvaluasiNamaPenyedia: selectedPengadaan.namaPenyedia,
-    baEvaluasiNomorBaPemasukan: getNomorDokumen(3),
-    baEvaluasiNilaiPenawaran: selectedPengadaan.hps,
+    baEvaluasiNamaPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
+    baEvaluasiNamaPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
+    baEvaluasiNomorBaPemasukan: getNomorDokumen(3), // [Fallback Dokumen 004]
+    baEvaluasiNilaiPenawaran: selectedPengadaan.hps, // [Procurement.offeredPrice / HPS]
     baEvaluasiJadwalPelaksanaan: '45 (Empat Puluh Lima) hari kalender',
     baEvaluasiKualifikasiSiup: 'L',
     baEvaluasiKualifikasiNpwp: 'L',
     baEvaluasiKualifikasiKtp: 'L',
     baEvaluasiKualifikasiKswp: 'L',
-    baEvaluasiPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    baEvaluasiPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // ===================================================================================
+    // DOKUMEN 007: UNDANGAN KLARIFIKASI DAN NEGOSIASI (ClarificationNegotiationInvitation)
+    // ===================================================================================
     uknLampiran: '1 (satu) gabung',
-    uknTempatSurat: selectedPengadaan.tempatPenandatanganan,
+    uknTempatSurat: selectedPengadaan.tempatPenandatanganan, // [Procurement.signingPlace]
     uknTanggalSurat: '2026-08-03',
-    uknKepadaJabatan: 'Direktur',
-    uknNamaPenyedia: selectedPengadaan.namaPenyedia,
-    uknAlamat: selectedPengadaan.alamat,
+    uknKepadaJabatan: 'Direktur', // [Provider.position]
+    uknNamaPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
+    uknAlamat: selectedPengadaan.alamat, // [Provider.address]
     uknPerihal: 'Undangan Klarifikasi dan Negosiasi',
-    uknPekerjaan: selectedPengadaan.judulPengadaan,
+    uknPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     uknWaktu: '11:00',
     uknHari: '2026-08-04',
     uknTempat: 'Ruang Rapat Kantor PT BPR NTB PERSERODA',
@@ -657,11 +869,15 @@ const ProcurementDocument = () => {
       'Berdasarkan hasil evaluasi yang kami lakukan, penawaran Saudara kami nyatakan memenuhi syarat. Sehubungan dengan hal tersebut, kami mengundang Saudara dalam rangka klarifikasi, negosiasi harga, dan pembuktian kualifikasi dengan keterangan sebagai berikut ini :',
     uknParagrafPenutup:
       'Dalam Pembuktian Kualifikasi, mohon kiranya membawa dokumen aseli terhadap dokumen yang dicantumkan dalam dokumen penawaran. Demikian atas perhatian dan kehadiran saudara disampaikan terima kasih.',
-    uknPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    uknPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =========================================================================================
+    // DOKUMEN 008: BERITA ACARA KLARIFIKASI DAN NEGOSIASI (ClarificationNegotiationMinutes)
+    // =========================================================================================
     baknTanggal: '2026-08-04',
     baknTempat: 'Ruang Rapat Kantor PT BPR NTB PERSERODA',
-    baknNamaPenyedia: selectedPengadaan.namaPenyedia,
-    baknPekerjaan: selectedPengadaan.judulPengadaan,
+    baknNamaPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
+    baknPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
     baknHasil1:
       'Dari hasil klarifikasi teknis, ' +
       selectedPengadaan.namaPenyedia +
@@ -674,51 +890,67 @@ const ProcurementDocument = () => {
       ' dapat menunjukkan dokumen asli yang tercantum dalam dokumen penawaran.',
     baknKeteranganPenutup:
       'Demikian Berita Acara ini dibuat untuk ditindak lanjuti sebagaimana mestinya.',
-    baknNamaDirektur: selectedPengadaan.namaDirektur,
-    baknPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    baknNamaDirektur: selectedPengadaan.namaDirektur, // [Provider.directorName]
+    baknPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =========================================================================
+    // DOKUMEN 009: BERITA ACARA HASIL PENGADAAN LANGSUNG (HasilPengadaan)
+    // =========================================================================
     bahplTanggal: '2026-08-05',
-    bahplPekerjaan: selectedPengadaan.judulPengadaan,
-    bahplHps: selectedPengadaan.hps,
+    bahplPekerjaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
+    bahplHps: selectedPengadaan.hps, // [Procurement.estimatedPriceIncludingTax]
     bahplUnsurEvaluasi: 'Adminstrasi, Teknis, Harga dan Kualifikasi',
-    bahplNamaPerusahaan: selectedPengadaan.namaPenyedia,
-    bahplHargaPenawaran: '135450000',
+    bahplNamaPerusahaan: selectedPengadaan.namaPenyedia, // [Provider.name]
+    bahplHargaPenawaran: '135450000', // [Procurement.offeredPriceIncludingTax]
     bahplEvalAdministrasi: 'M',
     bahplEvalTeknis: 'M',
     bahplEvalHarga: 'M',
     bahplEvalKualifikasi: 'M',
     bahplKet: 'M',
-    bahplNamaPenyedia: selectedPengadaan.namaPenyedia,
-    bahplNamaDirektur: selectedPengadaan.namaDirektur,
-    bahplAlamat: selectedPengadaan.alamat,
-    bahplNpwp: '1000000009573294',
-    bahplHargaNegosiasi: '130950000',
+    bahplNamaPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
+    bahplNamaDirektur: selectedPengadaan.namaDirektur, // [Provider.directorName]
+    bahplAlamat: selectedPengadaan.alamat, // [Provider.address]
+    bahplNpwp: '1000000009573294', // [Provider.taxIdentificationNumber]
+    bahplHargaNegosiasi: '130950000', // [Procurement.negotiatedPrice]
     bahplKeteranganPenutup:
       'Demikian berita acara ini dibuat sebagai pertimbangan dalam pembuatan kontrak oleh pejabat pembuat Komitmen.',
-    bahplPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
-    penunjukanTempat: selectedPengadaan.tempatPenandatanganan,
+    bahplPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // ============================================================================
+    // DOKUMEN 010: PENUNJUKAN PENYEDIA PENGADAAN / SPPBJ (PenunjukanPenyedia)
+    // ============================================================================
+    penunjukanTempat: selectedPengadaan.tempatPenandatanganan, // [Procurement.signingPlace]
     penunjukanTanggal: '2026-08-06',
     penunjukanLampiran: '-',
-    penunjukanJabatanTujuan: selectedPengadaan.jabatanDirektur,
-    penunjukanKepada: selectedPengadaan.namaPenyedia,
+    penunjukanJabatanTujuan: selectedPengadaan.jabatanDirektur, // [Provider.position]
+    penunjukanKepada: selectedPengadaan.namaPenyedia, // [Provider.name]
     penunjukanDi: 'Tempat',
     penunjukanPerihal: `Penunjukan Penyedia Pengadaan ${selectedPengadaan.judulPengadaan}`,
     penunjukanTanggalPenawaran: '2026-07-30',
-    penunjukanNilaiNegosiasi: selectedPengadaan.hasilNegosiasi,
+    penunjukanNilaiNegosiasi: selectedPengadaan.hasilNegosiasi, // [Procurement.negotiatedPrice]
     penunjukanKeteranganTindakLanjut:
       'Sebagai tindak lanjut dari Surat Penunjukan Penyedia Barang/Jasa (SPPBJ) ini Saudara diharuskan menandatangani SPK paling lambat 14 (empat belas) hari setelah diterbitkannya SPPBJ. Kegagalan Saudara untuk menerima penunjukan ini yang disusun berdasarkan evaluasi terhadap penawaran Saudara, akan dikenakan sanksi sesuai ketentuan dan peraturan yang berlaku.',
-    penunjukanPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '',
+    penunjukanPenandaTangan: selectedPengadaan.pbj[0]?.nrp ?? '', // [Relasi Signatory/PBJ]
+
+    // =================================================================
+    // DOKUMEN 011: SPK ATAU KONTRAK KERJA (Spk)
+    // =================================================================
     spkTanggal: '2026-08-07',
-    spkPpk: selectedPengadaan.ppk[0]?.nrp ?? '',
-    spkNamaPenyedia: selectedPengadaan.namaDirektur,
-    spkJabatanPenyedia: selectedPengadaan.jabatanDirektur,
-    spkPerusahaanPenyedia: selectedPengadaan.namaPenyedia,
-    spkPaketPengadaan: selectedPengadaan.judulPengadaan,
-    spkNomorSuratUndangan: getNomorDokumen(0),
-    spkTanggalSuratUndangan: '2026-07-29',
+    spkPpk: selectedPengadaan.ppk[0]?.nrp ?? '', // [Relasi PPK]
+    spkNamaPenyedia: selectedPengadaan.namaDirektur, // [Provider.directorName]
+    spkJabatanPenyedia: selectedPengadaan.jabatanDirektur, // [Provider.position]
+    spkPerusahaanPenyedia: selectedPengadaan.namaPenyedia, // [Provider.name]
+    spkPaketPengadaan: selectedPengadaan.judulPengadaan, // [Procurement.title]
+    spkNomorSuratUndangan: getNomorDokumen(0), // [Fallback Dokumen 001]
+    spkTanggalSuratUndangan: '2026-07-29', // [Fallback Dokumen 001]
     spkSumberDana: 'Rencana Bisnis Bank (RBB) Tahun Anggaran 2026',
-    spkNilaiKontrak: selectedPengadaan.hasilNegosiasi,
+    spkNilaiKontrak: selectedPengadaan.hasilNegosiasi, // [Procurement.negotiatedPrice]
   });
   const [showResultModal, setShowResultModal] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<
+    'idle' | 'loading' | 'success' | 'error'
+  >('idle');
+  const [saveError, setSaveError] = useState('');
   const [useHeaderFooter] = useState(true);
   const [showImageSettings, setShowImageSettings] = useState(false);
   const [defaultDocumentImages, setDefaultDocumentImages] =
@@ -748,6 +980,328 @@ const ProcurementDocument = () => {
     );
   }, [paketKey, documentKey]);
 
+  useEffect(() => {
+    let isActive = true;
+    const procurementId = id?.startsWith('procurement-')
+      ? id
+      : `procurement-${String(Number(id ?? 1)).padStart(3, '0')}`;
+
+    const loadDocumentData = async () => {
+      const paths = [
+        `/procurements/${procurementId}`,
+        `/procurements/${procurementId}/surat-undangan-pengadaan`,
+        `/procurements/${procurementId}/berita-acara-penjelasan-pekerjaan`,
+        `/procurements/${procurementId}/bukti-pengambilan-dokumen`,
+        `/procurements/${procurementId}/berita-acara-pemasukan-dan-pembukaan-dokumen`,
+        `/procurements/${procurementId}/tanda-terima-pemasukan-dokumen`,
+        `/procurements/${procurementId}/berita-acara-evaluasi-dokumen`,
+        `/procurements/${procurementId}/undangan-klarifikasi-dan-negosiasi`,
+        `/procurements/${procurementId}/berita-acara-klarifikasi-dan-negosiasi-dokumen`,
+        `/procurements/${procurementId}/hasil-pengadaan`,
+        `/procurements/${procurementId}/penunjukan-penyedia`,
+        `/procurements/${procurementId}/spk`,
+      ];
+
+      const responses = await Promise.all(
+        paths.map(async (path): Promise<ApiResponse | null> => {
+          try {
+            const response = await fetch(`${API_BASE_URL}${path}`);
+            if (!response.ok) return null;
+            return response.json();
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const procurement = responses[0]?.data;
+      if (!procurement || !isActive) return;
+
+      const fallback = fallbackPengadaan;
+      const assignments = Array.isArray(procurement.pegawaiAssignments)
+        ? procurement.pegawaiAssignments
+        : [];
+      const pegawaiById = new Map(
+        assignments
+          .filter((assignment: any) => assignment.pegawai)
+          .map((assignment: any) => [assignment.pegawai.id, assignment.pegawai])
+      );
+      const getNrp = (pegawaiId: unknown) =>
+        pegawaiById.get(pegawaiId as string)?.nrp ?? '';
+      const getDetail = (response: ApiResponse | null) => ({
+        ...(response?.meta?.resolved ?? {}),
+        ...(response?.data ?? {}),
+      });
+      const provider = procurement.provider ?? {};
+      const ppk = assignments
+        .filter((assignment: any) => assignment.relationType === 'PPK')
+        .map((assignment: any) => assignment.pegawai)
+        .filter(Boolean)
+        .map((pegawai: any) => ({ nama: pegawai.nama, nrp: pegawai.nrp }));
+      const pbj = assignments
+        .filter((assignment: any) => assignment.relationType === 'PBJ')
+        .map((assignment: any) => assignment.pegawai)
+        .filter(Boolean)
+        .map((pegawai: any) => ({ nama: pegawai.nama, nrp: pegawai.nrp }));
+
+      const nextProcurement: ProcurementViewData = {
+        ...fallback,
+        namaPenyedia: provider.name ?? fallback.namaPenyedia,
+        namaDirektur: provider.directorName ?? fallback.namaDirektur,
+        jabatanDirektur: provider.position ?? fallback.jabatanDirektur,
+        alamat: provider.address ?? fallback.alamat,
+        email: provider.email ?? fallback.email,
+        judulPengadaan: procurement.title ?? fallback.judulPengadaan,
+        hps: String(
+          procurement.estimatedPriceIncludingTax ?? fallback.hps
+        ),
+        hasilNegosiasi: String(
+          procurement.negotiatedPrice ?? fallback.hasilNegosiasi
+        ),
+        tempatPenandatanganan:
+          procurement.signingPlace ?? fallback.tempatPenandatanganan,
+        ppk: ppk.length ? ppk : fallback.ppk,
+        pbj: pbj.length ? pbj : fallback.pbj,
+      };
+
+      const invitation = getDetail(responses[1]);
+      const explanation = getDetail(responses[2]);
+      const collection = getDetail(responses[3]);
+      const submission = getDetail(responses[4]);
+      const submissionReceipt = getDetail(responses[5]);
+      const evaluation = getDetail(responses[6]);
+      const clarificationInvitation = getDetail(responses[7]);
+      const clarificationMinutes = getDetail(responses[8]);
+      const hasil = responses[9]?.data ?? {};
+      const penunjukan = responses[10]?.data ?? {};
+      const spk = responses[11]?.data ?? {};
+      const invitationActivity = invitation.activities?.[0];
+
+      setLoadedProcurement(nextProcurement);
+      setNomorDokumen((current) => invitation.nomorDokumen || current);
+      setForm((current) => ({
+        ...current,
+        kepadaYth: invitation.namaPenerima ?? current.kepadaYth,
+        di: invitation.alamatPenerima ?? current.di,
+        email: invitation.emailPenerima ?? current.email,
+        perihal: invitation.perihal ?? current.perihal,
+        namaPaketPekerjaan:
+          invitation.namaPaketPekerjaan ?? nextProcurement.judulPengadaan,
+        nilaiTotalHps: String(
+          invitation.nilaiTotalHps ?? nextProcurement.hps
+        ),
+        tempatSurat:
+          invitation.tempatSurat ?? nextProcurement.tempatPenandatanganan,
+        tanggalSurat: toDateInput(invitation.tanggalSurat) || current.tanggalSurat,
+        hariPelaksanaan:
+          toDateInput(invitation.hariPelaksanaan) || current.hariPelaksanaan,
+        waktuMulai: toTimeInput(invitation.wariMulai ?? invitation.waktuMulai) || current.waktuMulai,
+        waktuSelesai: toTimeInput(invitation.waktuSelesai) || current.waktuSelesai,
+        tempatPelaksanaan:
+          invitation.tempatPelaksanaan ?? nextProcurement.tempatPenandatanganan,
+        namaKegiatan: invitationActivity?.name ?? current.namaKegiatan,
+        tanggalKegiatan:
+          toDateInput(invitationActivity?.date) || current.tanggalKegiatan,
+        waktuKegiatanMulai:
+          toTimeInput(invitationActivity?.startTime) || current.waktuKegiatanMulai,
+        waktuKegiatanSelesai:
+          toTimeInput(invitationActivity?.endTime) || current.waktuKegiatanSelesai,
+        keteranganTujuan: invitation.keteranganTujuan ?? current.keteranganTujuan,
+        keteranganPermohonan:
+          invitation.keteranganPermohonan ?? current.keteranganPermohonan,
+        penandaTangan: getNrp(invitation.signatoryId) || current.penandaTangan,
+
+        beritaTanggal: toDateInput(explanation.tanggal) || current.beritaTanggal,
+        beritaPukul: toTimeInput(explanation.pukul) || current.beritaPukul,
+        beritaTempat: explanation.tempat ?? current.beritaTempat,
+        beritaPeserta: explanation.peserta ?? current.beritaPeserta,
+        beritaNamaPenjelasanPekerjaan:
+          explanation.namaPenjelasanPekerjaan ?? current.beritaNamaPenjelasanPekerjaan,
+        beritaKeteranganAwal: explanation.keteranganAwal ?? current.beritaKeteranganAwal,
+        beritaRapatDipimpinPpk:
+          getNrp(explanation.ppkPimpinanRapatId) || current.beritaRapatDipimpinPpk,
+        beritaPenjelasanAdministrasiPpbj:
+          getNrp(explanation.pbjPenjelasanUmumId) || current.beritaPenjelasanAdministrasiPpbj,
+        beritaPenjelasanTeknikPpbj:
+          getNrp(explanation.pbjPenjelasanTeknikId) || current.beritaPenjelasanTeknikPpbj,
+        beritaRapatTanyaJawab:
+          getNrp(explanation.pbjTanyaJawabId) || current.beritaRapatTanyaJawab,
+        beritaKeteranganTujuan: explanation.keteranganTujuan ?? current.beritaKeteranganTujuan,
+        beritaPenandaTangan:
+          getNrp(explanation.penandaTanganPbjId) || current.beritaPenandaTangan,
+
+        buktiPekerjaan: collection.pekerjaan ?? current.buktiPekerjaan,
+        buktiTanggal: toDateInput(collection.tanggal) || current.buktiTanggal,
+        buktiWaktu: toTimeInput(collection.waktu) || current.buktiWaktu,
+        buktiNamaPerusahaan: collection.namaPerusahaan ?? current.buktiNamaPerusahaan,
+        buktiNamaPejabatPerusahaan:
+          collection.namaPejabat ?? current.buktiNamaPejabatPerusahaan,
+        buktiJabatanPejabat: collection.jabatan ?? current.buktiJabatanPejabat,
+        buktiPenandaTangan:
+          getNrp(collection.penandaTanganId) || current.buktiPenandaTangan,
+
+        baPemasukanTanggalDokumen:
+          toDateInput(submission.tanggalBeritaAcara) || current.baPemasukanTanggalDokumen,
+        baPemasukanPukul: toTimeInput(submission.pukul) || current.baPemasukanPukul,
+        baPemasukanNamaPekerjaan:
+          submission.pengadaanPekerjaan ?? current.baPemasukanNamaPekerjaan,
+        baPemasukanPejabatPengadaan:
+          submission.pejabatPengadaanPbjId
+            ? pegawaiById.get(submission.pejabatPengadaanPbjId)?.nama ?? current.baPemasukanPejabatPengadaan
+            : current.baPemasukanPejabatPengadaan,
+        baPemasukanPenyedia: submission.namaPenyedia ?? current.baPemasukanPenyedia,
+        baPemasukanTanggalPemasukan:
+          toDateInput(submission.tanggalPemasukanPenawaran) || current.baPemasukanTanggalPemasukan,
+        baPemasukanMasaBerlaku:
+          submission.masaBerlakuPenawaran ?? current.baPemasukanMasaBerlaku,
+        baPemasukanNilaiPenawaran: String(
+          submission.nilaiPenawaran ?? current.baPemasukanNilaiPenawaran
+        ),
+        baPemasukanRincianHarga: submission.rincianHarga ?? current.baPemasukanRincianHarga,
+        baPemasukanKeterangan: submission.keterangan ?? current.baPemasukanKeterangan,
+        baPemasukanPenandaTangan:
+          getNrp(submission.penandaTanganPbjId) || current.baPemasukanPenandaTangan,
+
+        tandaTerimaPekerjaan: submissionReceipt.pekerjaan ?? current.tandaTerimaPekerjaan,
+        tandaTerimaTanggal:
+          toDateInput(submissionReceipt.tanggal) || current.tandaTerimaTanggal,
+        tandaTerimaWaktu:
+          toTimeInput(submissionReceipt.waktu) || current.tandaTerimaWaktu,
+        tandaTerimaNamaPerusahaan:
+          submissionReceipt.namaPerusahaan ?? current.tandaTerimaNamaPerusahaan,
+        tandaTerimaNamaPejabat:
+          submissionReceipt.namaPejabat ?? current.tandaTerimaNamaPejabat,
+        tandaTerimaJabatan: submissionReceipt.jabatan ?? current.tandaTerimaJabatan,
+        tandaTerimaPenandaTangan:
+          getNrp(submissionReceipt.penandaTanganId) || current.tandaTerimaPenandaTangan,
+
+        baEvaluasiTanggalDokumen:
+          toDateInput(evaluation.tanggalEvaluasi) || current.baEvaluasiTanggalDokumen,
+        baEvaluasiNamaPekerjaan:
+          evaluation.namaPekerjaan ?? current.baEvaluasiNamaPekerjaan,
+        baEvaluasiNamaPenyedia:
+          evaluation.namaPenyedia ?? current.baEvaluasiNamaPenyedia,
+        baEvaluasiNomorBaPemasukan:
+          evaluation.nomorBaPemasukan ?? current.baEvaluasiNomorBaPemasukan,
+        baEvaluasiNilaiPenawaran: String(
+          evaluation.nilaiPenawaran ?? current.baEvaluasiNilaiPenawaran
+        ),
+        baEvaluasiJadwalPelaksanaan:
+          evaluation.jadwalPelaksanaan ?? current.baEvaluasiJadwalPelaksanaan,
+        baEvaluasiKualifikasiSiup:
+          evaluation.kualifikasiSiup ?? current.baEvaluasiKualifikasiSiup,
+        baEvaluasiKualifikasiNpwp:
+          evaluation.kualifikasiNpwp ?? current.baEvaluasiKualifikasiNpwp,
+        baEvaluasiKualifikasiKtp:
+          evaluation.kualifikasiKtp ?? current.baEvaluasiKualifikasiKtp,
+        baEvaluasiKualifikasiKswp:
+          evaluation.kualifikasiKswp ?? current.baEvaluasiKualifikasiKswp,
+        baEvaluasiPenandaTangan:
+          getNrp(evaluation.penandaTanganId) || current.baEvaluasiPenandaTangan,
+
+        uknLampiran: clarificationInvitation.lampiran ?? current.uknLampiran,
+        uknTempatSurat: clarificationInvitation.tempatSurat ?? current.uknTempatSurat,
+        uknTanggalSurat:
+          toDateInput(clarificationInvitation.tanggalSurat) || current.uknTanggalSurat,
+        uknKepadaJabatan:
+          clarificationInvitation.jabatanPenerima ?? current.uknKepadaJabatan,
+        uknNamaPenyedia: clarificationInvitation.namaPenyedia ?? current.uknNamaPenyedia,
+        uknAlamat: clarificationInvitation.alamat ?? current.uknAlamat,
+        uknPerihal: clarificationInvitation.perihal ?? current.uknPerihal,
+        uknPekerjaan: clarificationInvitation.pekerjaan ?? current.uknPekerjaan,
+        uknWaktu: toTimeInput(clarificationInvitation.waktu) || current.uknWaktu,
+        uknHari:
+          toDateInput(clarificationInvitation.tanggalPelaksanaan) || current.uknHari,
+        uknTempat: clarificationInvitation.tempat ?? current.uknTempat,
+        uknParagrafPembuka:
+          clarificationInvitation.paragrafPembuka ?? current.uknParagrafPembuka,
+        uknParagrafPenutup:
+          clarificationInvitation.paragrafPenutup ?? current.uknParagrafPenutup,
+        uknPenandaTangan:
+          getNrp(clarificationInvitation.penandaTanganId) || current.uknPenandaTangan,
+
+        baknTanggal: toDateInput(clarificationMinutes.tanggal) || current.baknTanggal,
+        baknTempat: clarificationMinutes.tempat ?? current.baknTempat,
+        baknNamaPenyedia: clarificationMinutes.namaPenyedia ?? current.baknNamaPenyedia,
+        baknPekerjaan: clarificationMinutes.pekerjaan ?? current.baknPekerjaan,
+        baknHasil1: clarificationMinutes.hasilKlarifikasiTeknis ?? current.baknHasil1,
+        baknHasil2: clarificationMinutes.hasilNegosiasiHarga ?? current.baknHasil2,
+        baknHasil3:
+          clarificationMinutes.hasilPembuktianKualifikasi ?? current.baknHasil3,
+        baknKeteranganPenutup:
+          clarificationMinutes.keteranganPenutup ?? current.baknKeteranganPenutup,
+        baknNamaDirektur: clarificationMinutes.namaDirektur ?? current.baknNamaDirektur,
+        baknPenandaTangan:
+          getNrp(clarificationMinutes.penandaTanganId) || current.baknPenandaTangan,
+
+        bahplTanggal: toDateInput(hasil.bahplTanggal) || current.bahplTanggal,
+        bahplPekerjaan: hasil.bahplPekerjaan ?? current.bahplPekerjaan,
+        bahplHps: String(hasil.bahplHps ?? current.bahplHps),
+        bahplUnsurEvaluasi: hasil.bahplUnsurEvaluasi ?? current.bahplUnsurEvaluasi,
+        bahplNamaPerusahaan: hasil.bahplNamaPerusahaan ?? current.bahplNamaPerusahaan,
+        bahplHargaPenawaran: String(
+          hasil.bahplHargaPenawaran ?? current.bahplHargaPenawaran
+        ),
+        bahplEvalAdministrasi: hasil.bahplEvalAdministrasi ?? current.bahplEvalAdministrasi,
+        bahplEvalTeknis: hasil.bahplEvalTeknis ?? current.bahplEvalTeknis,
+        bahplEvalHarga: hasil.bahplEvalHarga ?? current.bahplEvalHarga,
+        bahplEvalKualifikasi: hasil.bahplEvalKualifikasi ?? current.bahplEvalKualifikasi,
+        bahplKet: hasil.bahplKet ?? current.bahplKet,
+        bahplNamaPenyedia: hasil.bahplNamaPenyedia ?? current.bahplNamaPenyedia,
+        bahplNamaDirektur: hasil.bahplNamaDirektur ?? current.bahplNamaDirektur,
+        bahplAlamat: hasil.bahplAlamat ?? current.bahplAlamat,
+        bahplNpwp: hasil.bahplNpwp ?? current.bahplNpwp,
+        bahplHargaNegosiasi: String(
+          hasil.bahplHargaNegosiasi ?? current.bahplHargaNegosiasi
+        ),
+        bahplKeteranganPenutup:
+          hasil.bahplKeteranganPenutup ?? current.bahplKeteranganPenutup,
+        bahplPenandaTangan:
+          hasil.bahplPenandaTangan ?? current.bahplPenandaTangan,
+
+        penunjukanTempat: penunjukan.penunjukanTempat ?? current.penunjukanTempat,
+        penunjukanTanggal:
+          toDateInput(penunjukan.penunjukanTanggal) || current.penunjukanTanggal,
+        penunjukanLampiran:
+          penunjukan.penunjukanLampiran ?? current.penunjukanLampiran,
+        penunjukanJabatanTujuan:
+          penunjukan.penunjukanJabatanTujuan ?? current.penunjukanJabatanTujuan,
+        penunjukanKepada: penunjukan.penunjukanKepada ?? current.penunjukanKepada,
+        penunjukanDi: penunjukan.penunjukanDi ?? current.penunjukanDi,
+        penunjukanPerihal: penunjukan.penunjukanPerihal ?? current.penunjukanPerihal,
+        penunjukanTanggalPenawaran:
+          toDateInput(penunjukan.penunjukanTanggalPenawaran) || current.penunjukanTanggalPenawaran,
+        penunjukanNilaiNegosiasi: String(
+          penunjukan.penunjukanNilaiNegosiasi ?? current.penunjukanNilaiNegosiasi
+        ),
+        penunjukanKeteranganTindakLanjut:
+          penunjukan.penunjukanKeteranganTindakLanjut ?? current.penunjukanKeteranganTindakLanjut,
+        penunjukanPenandaTangan:
+          penunjukan.penunjukanPenandaTangan ?? current.penunjukanPenandaTangan,
+
+        spkTanggal: toDateInput(spk.spkTanggal) || current.spkTanggal,
+        spkPpk: spk.spkPpk ?? current.spkPpk,
+        spkNamaPenyedia: spk.spkNamaPenyedia ?? current.spkNamaPenyedia,
+        spkJabatanPenyedia: spk.spkJabatanPenyedia ?? current.spkJabatanPenyedia,
+        spkPerusahaanPenyedia:
+          spk.spkPerusahaanPenyedia ?? current.spkPerusahaanPenyedia,
+        spkPaketPengadaan: spk.spkPaketPengadaan ?? current.spkPaketPengadaan,
+        spkNomorSuratUndangan:
+          spk.spkNomorSuratUndangan ?? current.spkNomorSuratUndangan,
+        spkTanggalSuratUndangan:
+          toDateInput(spk.spkTanggalSuratUndangan) || current.spkTanggalSuratUndangan,
+        spkSumberDana: spk.spkSumberDana ?? current.spkSumberDana,
+        spkNilaiKontrak: String(spk.spkNilaiKontrak ?? current.spkNilaiKontrak),
+      }));
+    };
+
+    loadDocumentData().catch(() => undefined);
+
+    return () => {
+      isActive = false;
+    };
+  }, [id]);
+
   const updateHeaderFooterVisibility = (
     kind: DocumentAssetKind,
     isVisible: boolean
@@ -758,31 +1312,34 @@ const ProcurementDocument = () => {
     saveDocumentHeaderFooterVisibility(paketKey, documentKey, next);
   };
 
-  const selectedPenandaTangan =
-    selectedPengadaan.pbj.find(
-      (pegawai) => pegawai.nrp === form.penandaTangan
-    ) ?? selectedPengadaan.pbj[0];
-  const getPbjByNrp = (nrp: string) =>
-    selectedPengadaan.pbj.find((pegawai) => pegawai.nrp === nrp) ??
-    selectedPengadaan.pbj[0];
-  const beritaRapatDipimpin = getPbjByNrp(form.beritaRapatDipimpinPpk);
-  const beritaAdministrasi = getPbjByNrp(
+  // Pegawai dicari berdasarkan id (nilai select), lintas peran
+  // (PPK/PBJ/penanda tangan) supaya template selalu menemukan orangnya.
+  const pegawaiKosong: DokumenPegawaiView = { id: '', nama: '', nrp: '' };
+  const semuaPegawai: DokumenPegawaiView[] = [
+    ...selectedPengadaan.ppk,
+    ...selectedPengadaan.pbj,
+    ...selectedPengadaan.penandaTangan,
+  ];
+  const getPegawaiById = (idPegawai: string): DokumenPegawaiView =>
+    semuaPegawai.find((pegawai) => pegawai.id === idPegawai) ?? pegawaiKosong;
+
+  const selectedPenandaTangan = getPegawaiById(form.penandaTangan);
+  const beritaRapatDipimpin = getPegawaiById(form.beritaRapatDipimpinPpk);
+  const beritaAdministrasi = getPegawaiById(
     form.beritaPenjelasanAdministrasiPpbj
   );
-  const beritaTeknik = getPbjByNrp(form.beritaPenjelasanTeknikPpbj);
-  const beritaTanyaJawab = getPbjByNrp(form.beritaRapatTanyaJawab);
-  const beritaPenandaTangan = getPbjByNrp(form.beritaPenandaTangan);
-  const buktiPenandaTangan = getPbjByNrp(form.buktiPenandaTangan);
-  const baPemasukanPenandaTangan = getPbjByNrp(form.baPemasukanPenandaTangan);
-  const tandaTerimaPenandaTangan = getPbjByNrp(form.tandaTerimaPenandaTangan);
-  const baEvaluasiPenandaTangan = getPbjByNrp(form.baEvaluasiPenandaTangan);
-  const uknPenandaTangan = getPbjByNrp(form.uknPenandaTangan);
-  const baknPenandaTangan = getPbjByNrp(form.baknPenandaTangan);
-  const bahplPenandaTangan = getPbjByNrp(form.bahplPenandaTangan);
-  const penunjukanPenandaTangan = getPbjByNrp(form.penunjukanPenandaTangan);
-  const spkPpk =
-    selectedPengadaan.ppk.find((pegawai) => pegawai.nrp === form.spkPpk) ??
-    selectedPengadaan.ppk[0];
+  const beritaTeknik = getPegawaiById(form.beritaPenjelasanTeknikPpbj);
+  const beritaTanyaJawab = getPegawaiById(form.beritaRapatTanyaJawab);
+  const beritaPenandaTangan = getPegawaiById(form.beritaPenandaTangan);
+  const buktiPenandaTangan = getPegawaiById(form.buktiPenandaTangan);
+  const baPemasukanPenandaTangan = getPegawaiById(form.baPemasukanPenandaTangan);
+  const tandaTerimaPenandaTangan = getPegawaiById(form.tandaTerimaPenandaTangan);
+  const baEvaluasiPenandaTangan = getPegawaiById(form.baEvaluasiPenandaTangan);
+  const uknPenandaTangan = getPegawaiById(form.uknPenandaTangan);
+  const baknPenandaTangan = getPegawaiById(form.baknPenandaTangan);
+  const bahplPenandaTangan = getPegawaiById(form.bahplPenandaTangan);
+  const penunjukanPenandaTangan = getPegawaiById(form.penunjukanPenandaTangan);
+  const spkPpk = getPegawaiById(form.spkPpk);
   const kegiatanRows = [
     {
       nama: form.namaKegiatan || 'Penjelasan Pekerjaan',
@@ -811,9 +1368,173 @@ const ProcurementDocument = () => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
+  // Dokumen yang sudah punya pemetaan field ke API (bisa dimuat & disimpan).
+  const dokumenTerhubung = slug !== null && Boolean(PETA_DOKUMEN[documentName]);
+
+  // Mengisi form dari nilai efektif backend. Field bernilai
+  // kosong dibiarkan memakai default statis form.
+  const terapkanNilaiEfektif = (ne: NilaiEfektif) => {
+    if (typeof ne.nomorDokumen === 'string' && ne.nomorDokumen) {
+      setNomorDokumen(ne.nomorDokumen);
+    }
+
+    const peta = PETA_DOKUMEN[documentName];
+    if (!peta) return;
+
+    setForm((current) => {
+      const patch: Record<string, string> = {};
+
+      for (const field of peta.fields) {
+        const raw = ne[field.api];
+        if (raw == null || raw === '') continue;
+
+        let value = String(raw);
+        if (field.tipe === 'date') value = value.slice(0, 10);
+        patch[field.form] = value;
+      }
+
+      return { ...current, ...patch };
+    });
+  };
+
+  // Menyusun body PUT dari nilai form untuk dokumen aktif.
+  const bangunBody = (): Record<string, unknown> | null => {
+    const peta = PETA_DOKUMEN[documentName];
+    if (!peta) return null;
+
+    const body: Record<string, unknown> = {
+      nomorDokumen: nomorDokumen.trim() || null,
+    };
+
+    const nilaiForm = form as unknown as Record<string, string>;
+
+    for (const field of peta.fields) {
+      const value = (nilaiForm[field.form] ?? '').trim();
+      body[field.api] = value === '' ? null : value;
+    }
+
+    return body;
+  };
+
+  // Memuat data pengadaan + isi dokumen aktif dari backend.
+  useEffect(() => {
+    if (!id) return;
+
+    let batal = false;
+
+    const muat = async () => {
+      setMemuat(true);
+      setMuatError('');
+
+      try {
+        const detail = await pengadaanApi.detail(id);
+        if (batal) return;
+
+        setSelectedPengadaan({
+          namaPenyedia: detail.penyediaNama,
+          namaDirektur: detail.penyediaDirektur ?? '',
+          jabatanDirektur: detail.penyediaJabatan ?? '',
+          alamat: detail.penyediaAlamat ?? '',
+          email: detail.penyediaEmail ?? '',
+          npwp: detail.penyediaNpwp ?? '',
+          judulPengadaan: detail.judul,
+          hps: detail.nilaiHps ?? '',
+          hasilNegosiasi: detail.hasilNegosiasi ?? '',
+          tempatPenandatanganan: detail.tempatPenandatanganan ?? '',
+          ppk: detail.ppk.map((p) => ({
+            id: p.id,
+            nama: p.nama,
+            nrp: p.nrp,
+            jabatan: p.jabatan,
+          })),
+          pbj: detail.pbj.map((p) => ({
+            id: p.id,
+            nama: p.nama,
+            nrp: p.nrp,
+            jabatan: p.jabatan,
+          })),
+          penandaTangan: detail.penandaTangan.map((p) => ({
+            id: p.id,
+            nama: p.nama,
+            nrp: p.nrp,
+            jabatan: p.jabatan,
+          })),
+        });
+
+        if (slug) {
+          const hasil = await dokumenApi.ambil(id, slug);
+          if (batal) return;
+
+          setSudahDisimpan(hasil.sudahDisimpan);
+          terapkanNilaiEfektif(hasil.nilaiEfektif);
+        }
+      } catch (error) {
+        if (!batal) {
+          setMuatError(getApiErrorMessage(error, 'Gagal memuat dokumen.'));
+        }
+      } finally {
+        if (!batal) setMemuat(false);
+      }
+    };
+
+    muat();
+
+    return () => {
+      batal = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, slug]);
+
+  const simpanDokumen = async () => {
+    if (!id || !slug || menyimpan) return;
+
+    const body = bangunBody();
+    if (!body) return;
+
+    setMenyimpan(true);
+    try {
+      const hasil = await dokumenApi.simpan(id, slug, body);
+      setSudahDisimpan(hasil.sudahDisimpan);
+      terapkanNilaiEfektif(hasil.nilaiEfektif);
+      toast.success(`${documentName} berhasil disimpan.`);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Gagal menyimpan dokumen.'));
+    } finally {
+      setMenyimpan(false);
+    }
+  };
+
   const openResultModal = () => {
     setShowImageSettings(false);
     setShowResultModal(true);
+  };
+
+  const saveDocument = async () => {
+    setSaveStatus('loading');
+    setSaveError('');
+
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
+
+      localStorage.setItem(
+        `sipintar-document-${paketKey}-${documentKey}`,
+        JSON.stringify({
+          documentName,
+          nomorDokumen,
+          form,
+          savedAt: new Date().toISOString(),
+        })
+      );
+
+      setSaveStatus('success');
+    } catch (error) {
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : 'Perubahan tidak dapat disimpan.'
+      );
+      setSaveStatus('error');
+    }
   };
 
   // Header dan footer selalu memakai gambar bawaan dari public/.
@@ -852,7 +1573,7 @@ const ProcurementDocument = () => {
     showFullPageFooter
       ? getFullPageFooterHtml(footerImage.src, fullPageFooterHeightMm)
       : '';
-
+// Template All Document
   const getSuratUndanganContentHtml = () => `
     <div class="content-block top">
       <table class="meta top-meta">
@@ -2229,6 +2950,32 @@ const ProcurementDocument = () => {
     printDocument.close();
   };
 
+  if (memuat) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <span className="inline-flex items-center gap-2 text-sm text-body dark:text-bodydark">
+          <FiLoader className="animate-spin" size={18} />
+          Memuat dokumen...
+        </span>
+      </div>
+    );
+  }
+
+  if (muatError) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+        <p className="text-sm text-danger">{muatError}</p>
+        <Link
+          to="/pengadaan"
+          className="inline-flex items-center gap-2 text-sm font-medium text-primary transition hover:opacity-80"
+        >
+          <FiArrowLeft size={16} />
+          Kembali ke Daftar Pengadaan
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -2311,6 +3058,21 @@ const ProcurementDocument = () => {
             </div>
 
             <div className="flex gap-2">
+              {!isPreview && dokumenTerhubung && (
+                <button
+                  type="button"
+                  onClick={simpanDokumen}
+                  disabled={menyimpan}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded border border-primary px-4 text-sm font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {menyimpan ? (
+                    <FiLoader className="animate-spin" size={18} />
+                  ) : (
+                    <FiSave size={18} />
+                  )}
+                  {sudahDisimpan ? 'Perbarui Dokumen' : 'Simpan Dokumen'}
+                </button>
+              )}
               {(isSuratUndangan ||
                 isBeritaAcaraPenjelasan ||
                 isBuktiPengambilan ||
@@ -2372,6 +3134,7 @@ const ProcurementDocument = () => {
                   </p>
                 </div>
               </div>
+              // Form All Document
             ) : isSuratUndangan ? (
               <div className="space-y-6">
                 <div className="grid gap-4 md:grid-cols-2">
@@ -2583,8 +3346,9 @@ const ProcurementDocument = () => {
                     }
                     className="w-full rounded border border-stroke bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white"
                   >
+                    <option value="">Pilih pegawai</option>
                     {selectedPengadaan.pbj.map((pegawai) => (
-                      <option key={pegawai.nrp} value={pegawai.nrp}>
+                      <option key={pegawai.id} value={pegawai.id}>
                         {pegawai.nama} - NRP : {pegawai.nrp}
                       </option>
                     ))}
@@ -2641,7 +3405,7 @@ const ProcurementDocument = () => {
                   <PbjSelect
                     label="Rapat dipimpin oleh PPK"
                     value={form.beritaRapatDipimpinPpk}
-                    options={selectedPengadaan.pbj}
+                    options={selectedPengadaan.ppk}
                     onChange={(value) =>
                       updateForm('beritaRapatDipimpinPpk', value)
                     }
@@ -3799,9 +4563,76 @@ const ProcurementDocument = () => {
                 </div>
               </div>
             )}
+            
           </div>
         </div>
       </div>
+
+      {saveStatus !== 'idle' && (
+        <div
+          className="fixed inset-0 z-9999 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+          onClick={() => {
+            if (saveStatus !== 'loading') setSaveStatus('idle');
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-sm border border-stroke bg-white p-6 text-center shadow-default dark:border-strokedark dark:bg-boxdark"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-live="polite"
+          >
+            {saveStatus === 'loading' ? (
+              <>
+                <FiLoader
+                  className="mx-auto animate-spin text-primary"
+                  size={42}
+                />
+                <h3 className="mt-4 text-lg font-semibold text-black dark:text-white">
+                  Menyimpan perubahan
+                </h3>
+                <p className="mt-2 text-sm text-body dark:text-bodydark">
+                  Data dokumen sedang disimpan.
+                </p>
+              </>
+            ) : saveStatus === 'success' ? (
+              <>
+                <FiCheckCircle className="mx-auto text-success" size={42} />
+                <h3 className="mt-4 text-lg font-semibold text-black dark:text-white">
+                  Perubahan tersimpan
+                </h3>
+                <p className="mt-2 text-sm text-body dark:text-bodydark">
+                  Data dokumen berhasil disimpan.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSaveStatus('idle')}
+                  className="mt-5 inline-flex h-10 items-center justify-center rounded bg-primary px-5 text-sm font-medium text-white transition hover:bg-opacity-90"
+                >
+                  Selesai
+                </button>
+              </>
+            ) : (
+              <>
+                <FiAlertCircle className="mx-auto text-danger" size={42} />
+                <h3 className="mt-4 text-lg font-semibold text-black dark:text-white">
+                  Penyimpanan gagal
+                </h3>
+                <p className="mt-2 text-sm text-body dark:text-bodydark">
+                  {saveError || 'Perubahan tidak dapat disimpan.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSaveStatus('idle')}
+                  className="mt-5 inline-flex h-10 items-center justify-center rounded border border-stroke px-5 text-sm font-medium text-black transition hover:border-primary hover:text-primary dark:border-strokedark dark:text-white"
+                >
+                  Tutup
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {showResultModal && (
         <div

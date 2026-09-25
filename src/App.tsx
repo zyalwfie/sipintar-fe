@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast';
 import Loader from './common/Loader';
 import PageTitle from './components/PageTitle';
 import SignIn from './pages/Authentication/SignIn';
+import AccountSettings from './pages/AccountSettings';
 import DataPegawai from './pages/DataPegawai';
 import ECommerce from './pages/Dashboard/ECommerce';
 import DocumentTemplate from './pages/DocumentTemplate';
@@ -111,6 +112,15 @@ function App() {
             <>
               <PageTitle title={`Template Dokumen | ${appName}`} />
               <DocumentTemplate />
+            </>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <>
+              <PageTitle title={`Pengaturan Akun | ${appName}`} />
+              <AccountSettings />
             </>
           }
         />

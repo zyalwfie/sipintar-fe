@@ -8,7 +8,6 @@ import {
   FiAlertCircle,
   FiLoader,
   FiLayout,
-  FiLoader,
   FiSave,
   FiX,
 } from 'react-icons/fi';

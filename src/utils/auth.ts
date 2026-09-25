@@ -1,22 +1,23 @@
-import { VITE_API_BASE_URL } from "../config/env";
+import { API_URL } from "../config/env";
 
 const AUTH_KEY = 'sipintar-auth';
 
-export type Role = 'ADMINISTRATOR' | 'VERIFIKATOR' | 'PEMOHON';
+export type Peran = 'ADMINISTRATOR' | 'VERIFIKATOR' | 'PEMOHON';
 
-export interface User {
+// Sama dengan respons POST /api/autentikasi/masuk.
+export interface Pengguna {
   id: string;
-  name: string;
+  nama: string;
   email: string;
-  role: Role;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
+  peran: Peran;
+  aktif: boolean;
+  dibuatPada: string;
+  diperbaruiPada: string;
 }
 
 export interface AuthData {
   token: string;
-  user: User;
+  pengguna: Pengguna;
 }
 
 export interface LoginResult {
@@ -32,10 +33,10 @@ export async function login(
   let response: Response;
 
   try {
-    response = await fetch(`${VITE_API_BASE_URL}/api/auth/login`, {
+    response = await fetch(`${API_URL}/autentikasi/masuk`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, kataSandi: password }),
     });
   } catch {
     return {
@@ -79,6 +80,21 @@ export function getAuthData(): AuthData | null {
     localStorage.removeItem(AUTH_KEY);
     return null;
   }
+}
+
+/** Nama event saat data login diperbarui (mis. setelah ubah profil). */
+export const AUTH_CHANGED_EVENT = 'sipintar-auth-changed';
+
+/**
+ * Mengganti data login yang tersimpan tanpa mengubah pilihan
+ * "ingat saya" (tetap di storage yang sama).
+ */
+export function updateAuthData(authData: AuthData): void {
+  const storage =
+    sessionStorage.getItem(AUTH_KEY) !== null ? sessionStorage : localStorage;
+
+  storage.setItem(AUTH_KEY, JSON.stringify(authData));
+  window.dispatchEvent(new Event(AUTH_CHANGED_EVENT));
 }
 
 export function getToken(): string | null {

@@ -1,10 +1,42 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import ClickOutside from '../ClickOutside';
 import UserOne from '../../images/user/user-01.png';
+import {
+  AUTH_CHANGED_EVENT,
+  clearAuth,
+  getAuthData,
+  Peran,
+} from '../../utils/auth';
+
+const labelPeran: Record<Peran, string> = {
+  ADMINISTRATOR: 'Administrator',
+  VERIFIKATOR: 'Verifikator',
+  PEMOHON: 'Pemohon',
+};
 
 const DropdownUser = () => {
+  const navigate = useNavigate();
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [pengguna, setPengguna] = useState(() => getAuthData()?.pengguna);
+
+  // Ikut berubah setelah profil diperbarui di Pengaturan Akun.
+  useEffect(() => {
+    const muatUlang = () => setPengguna(getAuthData()?.pengguna);
+
+    window.addEventListener(AUTH_CHANGED_EVENT, muatUlang);
+    return () => window.removeEventListener(AUTH_CHANGED_EVENT, muatUlang);
+  }, []);
+
+  // Token JWT tidak disimpan di server, jadi logout cukup
+  // menghapus data login di browser.
+  const handleLogout = () => {
+    clearAuth();
+    setDropdownOpen(false);
+    toast.success('Anda berhasil keluar.');
+    navigate('/', { replace: true });
+  };
 
   return (
     <ClickOutside onClick={() => setDropdownOpen(false)} className="relative">
@@ -15,9 +47,11 @@ const DropdownUser = () => {
       >
         <span className="hidden text-right lg:block">
           <span className="block text-sm font-medium text-black dark:text-white">
-            Thomas Anree
+            {pengguna?.nama ?? 'Pengguna'}
           </span>
-          <span className="block text-xs">UX Designer</span>
+          <span className="block text-xs">
+            {pengguna ? labelPeran[pengguna.peran] ?? pengguna.peran : ''}
+          </span>
         </span>
 
         <span className="h-12 w-12 rounded-full">
@@ -73,7 +107,11 @@ const DropdownUser = () => {
               </Link>
             </li>
           </ul>
-          <button className="flex items-center gap-3.5 px-6 py-4 text-sm font-medium duration-300 ease-in-out hover:text-primary lg:text-base">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex items-center gap-3.5 px-6 py-4 text-sm font-medium duration-300 ease-in-out hover:text-primary lg:text-base"
+          >
             <svg
               className="fill-current"
               width="22"

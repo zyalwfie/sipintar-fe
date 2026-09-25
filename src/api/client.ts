@@ -1,4 +1,6 @@
 import axios, { AxiosError } from 'axios';
+import { API_URL } from '../config/env';
+import { getToken } from '../utils/auth';
 
 /**
  * ======================================================
@@ -6,31 +8,24 @@ import axios, { AxiosError } from 'axios';
  * ======================================================
  *
  * Instance axios tunggal yang dipakai seluruh service. Base
- * URL diambil dari VITE_API_BASE_URL (lihat .env), sudah
- * termasuk prefix /api.
+ * URL diambil dari VITE_API_BASE_URL (lihat .env) dan selalu
+ * diakhiri /api.
  */
 
-const baseURL =
-  import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000/api';
-
-/** Kunci penyimpanan token. Dipakai lagi saat autentikasi diwire. */
-export const TOKEN_KEY = 'sipintar-token';
-
 export const apiClient = axios.create({
-  baseURL,
+  baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
 /**
- * Sisipkan token bila ada. Endpoint pegawai & pengadaan saat
- * ini belum butuh token, tetapi interceptor ini membuat modul
- * siap ketika autentikasi diwire.
+ * Sisipkan token hasil login (disimpan oleh utils/auth).
+ * Endpoint pegawai & pengadaan saat ini belum butuh token,
+ * tetapi endpoint autentikasi seperti /autentikasi/saya butuh.
  */
 apiClient.interceptors.request.use((config) => {
-  const token =
-    localStorage.getItem(TOKEN_KEY) ?? sessionStorage.getItem(TOKEN_KEY);
+  const token = getToken();
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;

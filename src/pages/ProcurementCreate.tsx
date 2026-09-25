@@ -89,13 +89,6 @@ const formatTanggalIndonesia = (iso: string) => {
   }).format(date);
 };
 
-const getNomorDokumen = (index: number) => {
-  const now = new Date();
-  const nomorUrut = String(index + 1).padStart(3, '0');
-  const bulan = String(now.getMonth() + 1).padStart(2, '0');
-  return `${nomorUrut}.${bulan}.PBJ./BPR-NTB/${now.getFullYear()}`;
-};
-
 /** Nilai rupiah backend (string/null) -> digit string untuk state. */
 const rupiahKeDigit = (value: string | null | undefined) =>
   value ? String(value).split('.')[0].replace(/\D/g, '') : '';
@@ -362,6 +355,7 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
   const [pegawaiOptions, setPegawaiOptions] = useState<Pegawai[]>([]);
   const [loadingAwal, setLoadingAwal] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
   const [namaPenyedia, setNamaPenyedia] = useState('');
   const [dataPenyediaVisible, setDataPenyediaVisible] = useState(false);
@@ -480,14 +474,34 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
     setDataPenyediaVisible(true);
   };
 
-  const generateKeterangan = () => {
-    setDokumenRows((rows) =>
-      rows.map((row, index) => ({
-        ...row,
-        nomorDokumen: getNomorDokumen(index),
-        tanggalPelaksanaan: todayIso(),
-      }))
-    );
+  // Nomor diambil dari server supaya urutnya melanjutkan
+  // pengadaan lain di tahun yang sama. Saat edit, nomor milik
+  // pengadaan ini sendiri tidak ikut dihitung.
+  const generateKeterangan = async () => {
+    if (generating) return;
+
+    setGenerating(true);
+
+    try {
+      const tanggal = todayIso();
+      const { nomor } = await pengadaanApi.nomorDokumenBerikutnya({
+        jumlah: dokumenRows.length,
+        tanggal,
+        kecualiPengadaanId: isEditMode && id ? id : undefined,
+      });
+
+      setDokumenRows((rows) =>
+        rows.map((row, index) => ({
+          ...row,
+          nomorDokumen: nomor[index] ?? row.nomorDokumen,
+          tanggalPelaksanaan: tanggal,
+        }))
+      );
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Gagal membuat nomor dokumen.'));
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const addRow = (
@@ -746,9 +760,14 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                 <button
                   type="button"
                   onClick={generateKeterangan}
-                  className="inline-flex items-center justify-center gap-2 rounded bg-primary px-4 py-2.5 text-sm font-medium text-white transition hover:bg-opacity-90"
+                  disabled={generating}
+                  className="inline-flex items-center justify-center gap-2 rounded bg-primary px-4 py-2.5 text-sm font-medium text-white transition hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <FiFileText size={18} />
+                  {generating ? (
+                    <FiLoader size={18} className="animate-spin" />
+                  ) : (
+                    <FiFileText size={18} />
+                  )}
                   Generate Keterangan
                 </button>
               </div>

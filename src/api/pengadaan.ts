@@ -4,6 +4,7 @@ import {
   ApiResponse,
   BuatPengadaanInput,
   DaftarPengadaanQuery,
+  NomorDokumenBerikutnya,
   Paginasi,
   Pengadaan,
   PengadaanDetail,
@@ -31,6 +32,23 @@ export const pengadaanApi = {
     );
 
     return { data: data.data, meta: data.meta };
+  },
+
+  /**
+   * Usulan nomor dokumen berikutnya (urut berlanjut lintas
+   * pengadaan, kembali ke 001 tiap tahun baru).
+   */
+  async nomorDokumenBerikutnya(query: {
+    jumlah: number;
+    tanggal?: string;
+    kecualiPengadaanId?: string;
+  }): Promise<NomorDokumenBerikutnya> {
+    const { data } = await apiClient.get<ApiResponse<NomorDokumenBerikutnya>>(
+      '/pengadaan/nomor-dokumen-berikutnya',
+      { params: query },
+    );
+
+    return data.data;
   },
 
   async detail(id: string): Promise<PengadaanDetail> {

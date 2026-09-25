@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import {
   FiArrowLeft,
   FiDownload,
@@ -22,7 +22,13 @@ import {
   loadDefaultDocumentImages,
   saveDocumentHeaderFooterVisibility,
 } from '../utils/documentTemplate';
-import { dokumenApi, DOKUMEN_SLUG, getApiErrorMessage, pengadaanApi } from '../api';
+import {
+  dokumenApi,
+  DOKUMEN_SLUG,
+  getApiErrorMessage,
+  pegawaiApi,
+  pengadaanApi,
+} from '../api';
 import type { NilaiEfektif } from '../api';
 
 const dokumenPelaksana = [
@@ -83,6 +89,34 @@ const emptyPengadaanView: DokumenPengadaanView = {
   ppk: [],
   pbj: [],
   penandaTangan: [],
+};
+
+const PegawaiOptionsContext = createContext<DokumenPegawaiView[] | null>(null);
+
+const muatSemuaPegawai = async (): Promise<DokumenPegawaiView[]> => {
+  const semuaPegawai: DokumenPegawaiView[] = [];
+  let halaman = 1;
+
+  while (true) {
+    const hasil = await pegawaiApi.daftar({ halaman, batas: 100 });
+
+    semuaPegawai.push(
+      ...hasil.data.map((pegawai) => ({
+        id: pegawai.id,
+        nama: pegawai.nama,
+        nrp: pegawai.nrp,
+        jabatan: pegawai.jabatan,
+      })),
+    );
+
+    if (halaman >= hasil.meta.totalHalaman || hasil.data.length === 0) {
+      break;
+    }
+
+    halaman += 1;
+  }
+
+  return semuaPegawai;
 };
 
 // ======================================================
@@ -580,8 +614,12 @@ const PbjSelect = ({
   value: string;
   options: { id: string; nama: string; nrp: string }[];
   onChange: (value: string) => void;
-}) => (
-  <div>
+}) => {
+  const semuaPegawai = useContext(PegawaiOptionsContext);
+  const daftarOpsi = semuaPegawai?.length ? semuaPegawai : options;
+
+  return (
+    <div>
     <label className="mb-2 block text-sm font-medium text-black dark:text-white">
       {label}
     </label>
@@ -591,14 +629,15 @@ const PbjSelect = ({
       className="w-full rounded border border-stroke bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white"
     >
       <option value="">Pilih pegawai</option>
-      {options.map((pegawai) => (
+      {daftarOpsi.map((pegawai) => (
         <option key={pegawai.id} value={pegawai.id}>
           {pegawai.nama} - NRP : {pegawai.nrp}
         </option>
       ))}
     </select>
   </div>
-);
+  );
+};
 
 const EvalSelect = ({
   label,
@@ -704,6 +743,7 @@ const ProcurementDocument = () => {
   const slug = DOKUMEN_SLUG[selectedIndex] ?? null;
   const [selectedPengadaan, setSelectedPengadaan] =
     useState<DokumenPengadaanView>(emptyPengadaanView);
+  const [daftarPegawai, setDaftarPegawai] = useState<DokumenPegawaiView[]>([]);
   const [memuat, setMemuat] = useState(true);
   const [muatError, setMuatError] = useState('');
   const [menyimpan, setMenyimpan] = useState(false);
@@ -971,13 +1011,8 @@ const ProcurementDocument = () => {
   // Pegawai dicari berdasarkan id (nilai select), lintas peran
   // (PPK/PBJ/penanda tangan) supaya template selalu menemukan orangnya.
   const pegawaiKosong: DokumenPegawaiView = { id: '', nama: '', nrp: '' };
-  const semuaPegawai: DokumenPegawaiView[] = [
-    ...selectedPengadaan.ppk,
-    ...selectedPengadaan.pbj,
-    ...selectedPengadaan.penandaTangan,
-  ];
   const getPegawaiById = (idPegawai: string): DokumenPegawaiView =>
-    semuaPegawai.find((pegawai) => pegawai.id === idPegawai) ?? pegawaiKosong;
+    daftarPegawai.find((pegawai) => pegawai.id === idPegawai) ?? pegawaiKosong;
 
   const selectedPenandaTangan = getPegawaiById(form.penandaTangan);
   const beritaRapatDipimpin = getPegawaiById(form.beritaRapatDipimpinPpk);
@@ -1084,8 +1119,10 @@ const ProcurementDocument = () => {
 
       try {
         const detail = await pengadaanApi.detail(id);
+        const semuaPegawai = await muatSemuaPegawai();
         if (batal) return;
 
+        setDaftarPegawai(semuaPegawai);
         setSelectedPengadaan({
           namaPenyedia: detail.penyediaNama,
           namaDirektur: detail.penyediaDirektur ?? '',
@@ -2605,7 +2642,8 @@ const ProcurementDocument = () => {
   }
 
   return (
-    <>
+    <PegawaiOptionsContext.Provider value={daftarPegawai}>
+      <>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="mb-3">
@@ -2975,7 +3013,7 @@ const ProcurementDocument = () => {
                     className="w-full rounded border border-stroke bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white"
                   >
                     <option value="">Pilih pegawai</option>
-                    {selectedPengadaan.pbj.map((pegawai) => (
+                    {daftarPegawai.map((pegawai) => (
                       <option key={pegawai.id} value={pegawai.id}>
                         {pegawai.nama} - NRP : {pegawai.nrp}
                       </option>
@@ -4326,7 +4364,8 @@ const ProcurementDocument = () => {
           </div>
         </div>
       )}
-    </>
+      </>
+    </PegawaiOptionsContext.Provider>
   );
 };
 

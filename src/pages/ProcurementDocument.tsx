@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
   FiArrowLeft,
+  FiChevronLeft,
+  FiChevronRight,
   FiDownload,
   FiEye,
   FiFileText,
@@ -9,7 +11,7 @@ import {
   FiSave,
   FiX,
 } from 'react-icons/fi';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   DefaultDocumentImages,
@@ -737,6 +739,7 @@ const HeaderFooterSwitch = ({
 
 const ProcurementDocument = () => {
   const { id, documentIndex, action } = useParams();
+  const navigate = useNavigate();
   const selectedIndex = Math.max(Number(documentIndex ?? 1) - 1, 0);
   const documentName =
     dokumenPelaksana[selectedIndex] ?? dokumenPelaksana[0];
@@ -773,6 +776,9 @@ const ProcurementDocument = () => {
   const isPenunjukanPenyedia =
     !isPreview && documentName === 'Penunjukan Penyedia Pengadaan';
   const isSpk = !isPreview && documentName === 'SPK atau Kontrak Kerja';
+  const currentDocumentNumber = selectedIndex + 1;
+  const hasPreviousDocument = currentDocumentNumber > 1;
+  const hasNextDocument = currentDocumentNumber < dokumenPelaksana.length;
   const [nomorDokumen, setNomorDokumen] = useState(
     getNomorDokumen(selectedIndex)
   );
@@ -1200,6 +1206,14 @@ const ProcurementDocument = () => {
   const openResultModal = () => {
     setShowImageSettings(false);
     setShowResultModal(true);
+  };
+
+  const pindahDokumen = (nomorDokumenBerikutnya: number) => {
+    if (!id) return;
+
+    navigate(
+      `/pengadaan/${id}/dokumen/${nomorDokumenBerikutnya}/${action ?? 'buka'}`,
+    );
   };
 
   // Header dan footer selalu memakai gambar bawaan dari public/.
@@ -4229,6 +4243,34 @@ const ProcurementDocument = () => {
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="flex items-center justify-between border-t border-stroke px-5 py-4 dark:border-strokedark">
+            <button
+              type="button"
+              onClick={() => pindahDokumen(currentDocumentNumber - 1)}
+              disabled={!hasPreviousDocument}
+              className="inline-flex h-10 items-center justify-center gap-1 rounded border border-stroke px-3 text-sm text-body transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-strokedark dark:text-bodydark"
+              title="Dokumen sebelumnya"
+              aria-label="Dokumen sebelumnya"
+            >
+              <FiChevronLeft size={18} />
+              Sebelumnya
+            </button>
+            <span className="text-sm text-body dark:text-bodydark">
+              Dokumen {currentDocumentNumber} dari {dokumenPelaksana.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => pindahDokumen(currentDocumentNumber + 1)}
+              disabled={!hasNextDocument}
+              className="inline-flex h-10 items-center justify-center gap-1 rounded border border-stroke px-3 text-sm text-body transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-strokedark dark:text-bodydark"
+              title="Dokumen berikutnya"
+              aria-label="Dokumen berikutnya"
+            >
+              Berikutnya
+              <FiChevronRight size={18} />
+            </button>
           </div>
         </div>
       </div>

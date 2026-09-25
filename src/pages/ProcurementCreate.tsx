@@ -1,85 +1,43 @@
-import { FormEvent, useMemo, useState } from 'react';
+import {
+  Dispatch,
+  FormEvent,
+  SetStateAction,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   FiArrowLeft,
   FiCheckCircle,
   FiChevronDown,
   FiFileText,
+  FiLoader,
   FiPlus,
   FiSave,
   FiSearch,
   FiTrash2,
 } from 'react-icons/fi';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import {
+  DAFTAR_JENIS_DOKUMEN,
+  getApiErrorMessage,
+  pegawaiApi,
+  pengadaanApi,
+} from '../api';
+import type {
+  BuatPengadaanInput,
+  JenisDokumen,
+  Pegawai,
+  PerbaruiPengadaanInput,
+} from '../api';
 
-type Pegawai = {
-  id: string;
+type DokumenRow = {
+  jenis: JenisDokumen;
   nama: string;
-  nrp: string;
-  jabatan: string;
+  nomorDokumen: string;
+  tanggalPelaksanaan: string; // ISO yyyy-mm-dd
 };
-
-type DokumenPelaksana = {
-  nama: string;
-  wajib: boolean;
-};
-
-const pegawaiOptions: Pegawai[] = [
-  {
-    id: 'p-1',
-    nama: 'I Made Surya Pratama',
-    nrp: '19870412',
-    jabatan: 'Pejabat Pembuat Komitmen',
-  },
-  {
-    id: 'p-2',
-    nama: 'Ni Putu Maharani',
-    nrp: '19910622',
-    jabatan: 'Pejabat Pengadaan Barang/Jasa',
-  },
-  {
-    id: 'p-3',
-    nama: 'Muhammad Rizal Fahri',
-    nrp: '19891105',
-    jabatan: 'Analis Pengadaan',
-  },
-  {
-    id: 'p-4',
-    nama: 'Ayu Lestari Dewi',
-    nrp: '19940718',
-    jabatan: 'Kepala Bagian Umum',
-  },
-  {
-    id: 'p-5',
-    nama: 'Gede Arya Wiratama',
-    nrp: '19850330',
-    jabatan: 'Verifikator Pengadaan',
-  },
-  {
-    id: 'p-6',
-    nama: 'Siti Rahmawati',
-    nrp: '19920914',
-    jabatan: 'Administrasi Pengadaan',
-  },
-];
-
-const dokumenPelaksana: DokumenPelaksana[] = [
-  { nama: 'Kerangka Acuan Kerja', wajib: false },
-  { nama: 'Surat Undangan Pengadaan', wajib: true },
-  { nama: 'Berita Acara Penjelasan Pekerjaan', wajib: true },
-  { nama: 'Bukti Pengambilan Dokumen Pengadaan', wajib: true },
-  { nama: 'Berita Acara Pemasukan dan Pembukaan Dokumen', wajib: true },
-  { nama: 'Tanda Terima Pemasukan Dokumen', wajib: true },
-  { nama: 'Berita Acara Evaluasi Dokumen', wajib: true },
-  { nama: 'Undangan Klarifikasi dan Negosiasi', wajib: true },
-  { nama: 'Berita Acara Klarifikasi dan Negosiasi Dokumen', wajib: true },
-  { nama: 'Berita Acara Hasil Pengadaan Langsung', wajib: true },
-  { nama: 'Penunjukan Penyedia Pengadaan', wajib: true },
-  { nama: 'SPK atau Kontrak Kerja', wajib: true },
-  { nama: 'SPMK', wajib: true },
-  { nama: 'Berita Acara Pemeriksaan Pekerjaan', wajib: true },
-  { nama: 'Berita Acara Serah Terima Pekerjaan', wajib: true },
-  { nama: 'Pengajuan Pembayaran', wajib: true },
-];
 
 const penyediaInitial = {
   alamat: '',
@@ -101,72 +59,13 @@ const detailInitial = {
   peserta: '',
 };
 
-const editPengadaanSeeds = [
-  {
-    id: 1,
-    namaPenyedia: 'PT Nusa Teknologi Mandiri',
-    judulPengadaan: 'Pengadaan Laptop Operasional Kantor',
-    hps: '185000000',
-  },
-  {
-    id: 2,
-    namaPenyedia: 'CV Sinar Berkah Abadi',
-    judulPengadaan: 'Pengadaan Meja dan Kursi Ruang Rapat',
-    hps: '72500000',
-  },
-  {
-    id: 3,
-    namaPenyedia: 'PT Prima Solusi Digital',
-    judulPengadaan: 'Pengadaan Lisensi Software Akuntansi',
-    hps: '128750000',
-  },
-  {
-    id: 4,
-    namaPenyedia: 'CV Karya Logistik Nusantara',
-    judulPengadaan: 'Pengadaan Kendaraan Operasional Cabang',
-    hps: '342000000',
-  },
-  {
-    id: 5,
-    namaPenyedia: 'PT Citra Sarana Sejahtera',
-    judulPengadaan: 'Pengadaan Perangkat Jaringan Internal',
-    hps: '96500000',
-  },
-];
-
-const getEditSeed = (id?: string) => {
-  const selectedId = Number(id);
-  const selected =
-    editPengadaanSeeds.find((pengadaan) => pengadaan.id === selectedId) ??
-    editPengadaanSeeds[0];
-  const hargaVendor = String(Number(selected.hps) - 7500000);
-  const hasilNegosiasi = String(Number(selected.hps) - 12500000);
-
-  return {
-    namaPenyedia: selected.namaPenyedia,
-    penyedia: {
-      alamat: 'Jl. Langko No. 12, Mataram',
-      namaDirektur: 'I Gede Wirawan',
-      nomorIdentitas: `ID-${selected.id}9821`,
-      teleponFax: '0370-625412',
-      email: `admin.${selected.id}@vendor.co.id`,
-      jabatan: 'Direktur',
-      hargaPenawaranPajak: hargaVendor,
-      npwp: `01.234.${selected.id}56.7-911.000`,
-    },
-    detail: {
-      judulPengadaan: selected.judulPengadaan,
-      perhitunganHps: selected.hps,
-      hargaVendor,
-      hasilNegosiasi,
-      tempatPenandatanganan: 'Mataram',
-      peserta: 'PPK, PBJ, Penyedia, dan Tim Teknis',
-    },
-    ppkIds: ['p-1', 'p-4'],
-    pbjIds: ['p-2', 'p-3'],
-    penandaTangan: ['I Made Surya Pratama', 'Ni Putu Maharani'],
-  };
-};
+const buatDokumenRows = (): DokumenRow[] =>
+  DAFTAR_JENIS_DOKUMEN.map((item) => ({
+    jenis: item.jenis,
+    nama: item.nama,
+    nomorDokumen: '',
+    tanggalPelaksanaan: '',
+  }));
 
 const formatRupiahText = (value: string) => {
   const digits = value.replace(/\D/g, '');
@@ -175,20 +74,35 @@ const formatRupiahText = (value: string) => {
   return new Intl.NumberFormat('id-ID').format(Number(digits));
 };
 
-const formatTanggalIndonesia = () =>
-  new Intl.DateTimeFormat('id-ID', {
+const todayIso = () => new Date().toISOString().slice(0, 10);
+
+const formatTanggalIndonesia = (iso: string) => {
+  if (!iso) return '-';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+
+  return new Intl.DateTimeFormat('id-ID', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }).format(new Date());
+  }).format(date);
+};
 
 const getNomorDokumen = (index: number) => {
   const now = new Date();
   const nomorUrut = String(index + 1).padStart(3, '0');
   const bulan = String(now.getMonth() + 1).padStart(2, '0');
-  return `${nomorUrut}.${bulan}.PBJ./BPR-NTB/2026`;
+  return `${nomorUrut}.${bulan}.PBJ./BPR-NTB/${now.getFullYear()}`;
 };
+
+/** Nilai rupiah backend (string/null) -> digit string untuk state. */
+const rupiahKeDigit = (value: string | null | undefined) =>
+  value ? String(value).split('.')[0].replace(/\D/g, '') : '';
+
+/** ISO datetime dari backend -> yyyy-mm-dd untuk input tanggal. */
+const isoKeTanggal = (value: string | null | undefined) =>
+  value ? value.slice(0, 10) : '';
 
 const terbilang = (value: number): string => {
   const satuan = [
@@ -344,18 +258,20 @@ const MoneyInput = ({
 const PegawaiPicker = ({
   label,
   value,
+  options,
   excludedIds,
   onChange,
 }: {
   label: string;
   value: string;
+  options: Pegawai[];
   excludedIds: string[];
   onChange: (value: string) => void;
 }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const selected = pegawaiOptions.find((pegawai) => pegawai.id === value);
-  const filteredPegawai = pegawaiOptions.filter((pegawai) => {
+  const selected = options.find((pegawai) => pegawai.id === value);
+  const filteredPegawai = options.filter((pegawai) => {
     const searchable = `${pegawai.nama} ${pegawai.nrp} ${pegawai.jabatan}`.toLowerCase();
     return (
       searchable.includes(query.toLowerCase()) &&
@@ -440,36 +356,116 @@ const PegawaiPicker = ({
 
 const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const isEditMode = mode === 'edit';
-  const editSeed = getEditSeed(id);
-  const [namaPenyedia, setNamaPenyedia] = useState(
-    isEditMode ? editSeed.namaPenyedia : ''
-  );
-  const [dataPenyediaVisible, setDataPenyediaVisible] = useState(isEditMode);
-  const [penyedia, setPenyedia] = useState(
-    isEditMode ? editSeed.penyedia : penyediaInitial
-  );
-  const [detail, setDetail] = useState(
-    isEditMode ? editSeed.detail : detailInitial
-  );
-  const [ppkIds, setPpkIds] = useState(isEditMode ? editSeed.ppkIds : ['']);
-  const [pbjIds, setPbjIds] = useState(isEditMode ? editSeed.pbjIds : ['']);
-  const [penandaTangan, setPenandaTangan] = useState(
-    isEditMode ? editSeed.penandaTangan : ['']
-  );
-  const [kakAktif, setKakAktif] = useState(false);
-  const [keteranganGenerated, setKeteranganGenerated] = useState(isEditMode);
-  const [tanggalPelaksana, setTanggalPelaksana] = useState(formatTanggalIndonesia());
-  const [saved, setSaved] = useState(false);
 
-  const visibleDokumen = useMemo(
-    () =>
-      dokumenPelaksana.filter((dokumen) => dokumen.wajib || kakAktif),
-    [kakAktif]
-  );
+  const [pegawaiOptions, setPegawaiOptions] = useState<Pegawai[]>([]);
+  const [loadingAwal, setLoadingAwal] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [namaPenyedia, setNamaPenyedia] = useState('');
+  const [dataPenyediaVisible, setDataPenyediaVisible] = useState(false);
+  const [penyedia, setPenyedia] = useState(penyediaInitial);
+  const [detail, setDetail] = useState(detailInitial);
+  const [ppkIds, setPpkIds] = useState<string[]>(['']);
+  const [pbjIds, setPbjIds] = useState<string[]>(['']);
+  const [penandaTanganIds, setPenandaTanganIds] = useState<string[]>(['']);
+  const [kakAktif, setKakAktif] = useState(false);
+  const [dokumenRows, setDokumenRows] = useState<DokumenRow[]>(buatDokumenRows);
+
+  // Muat opsi pegawai (dropdown PPK / PBJ / penanda tangan) + data
+  // pengadaan bila mode edit.
+  useEffect(() => {
+    let batal = false;
+
+    const muat = async () => {
+      setLoadingAwal(true);
+      try {
+        const pegawaiHasil = await pegawaiApi.daftar({ batas: 100 });
+        if (batal) return;
+        setPegawaiOptions(pegawaiHasil.data);
+
+        if (isEditMode && id) {
+          const data = await pengadaanApi.detail(id);
+          if (batal) return;
+
+          setNamaPenyedia(data.penyediaNama);
+          setDataPenyediaVisible(true);
+          setPenyedia({
+            alamat: data.penyediaAlamat ?? '',
+            namaDirektur: data.penyediaDirektur ?? '',
+            nomorIdentitas: data.penyediaNomorIdentitas ?? '',
+            teleponFax: data.penyediaTeleponFax ?? '',
+            email: data.penyediaEmail ?? '',
+            jabatan: data.penyediaJabatan ?? '',
+            hargaPenawaranPajak: rupiahKeDigit(data.hargaPenawaranSudahPajak),
+            npwp: data.penyediaNpwp ?? '',
+          });
+          setDetail({
+            judulPengadaan: data.judul,
+            perhitunganHps: rupiahKeDigit(data.nilaiHps),
+            hargaVendor: rupiahKeDigit(data.hargaDitawarkanVendor),
+            hasilNegosiasi: rupiahKeDigit(data.hasilNegosiasi),
+            tempatPenandatanganan: data.tempatPenandatanganan ?? '',
+            peserta: data.peserta ?? '',
+          });
+          setKakAktif(data.sertakanKak);
+          setPpkIds(data.ppk.length ? data.ppk.map((p) => p.id) : ['']);
+          setPbjIds(data.pbj.length ? data.pbj.map((p) => p.id) : ['']);
+          setPenandaTanganIds(
+            data.penandaTangan.length
+              ? data.penandaTangan.map((p) => p.id)
+              : ['']
+          );
+
+          if (data.dokumen.length > 0) {
+            setDokumenRows((rows) =>
+              rows.map((row) => {
+                const found = data.dokumen.find((d) => d.jenis === row.jenis);
+                return found
+                  ? {
+                      ...row,
+                      nomorDokumen: found.nomorDokumen ?? '',
+                      tanggalPelaksanaan: isoKeTanggal(found.tanggalPelaksanaan),
+                    }
+                  : row;
+              })
+            );
+          }
+        }
+      } catch (error) {
+        if (!batal) {
+          toast.error(getApiErrorMessage(error, 'Gagal memuat data.'));
+        }
+      } finally {
+        if (!batal) setLoadingAwal(false);
+      }
+    };
+
+    muat();
+
+    return () => {
+      batal = true;
+    };
+  }, [isEditMode, id]);
+
+  const visibleDokumen = useMemo(() => {
+    const kak: DokumenRow[] = kakAktif
+      ? [
+          {
+            jenis: 'SURAT_UNDANGAN' as JenisDokumen, // penanda tampilan saja
+            nama: 'Kerangka Acuan Kerja',
+            nomorDokumen: '',
+            tanggalPelaksanaan: '',
+          },
+        ]
+      : [];
+    return [...kak, ...dokumenRows];
+  }, [kakAktif, dokumenRows]);
 
   const selectedPpkIds = ppkIds.filter(Boolean);
   const selectedPbjIds = pbjIds.filter(Boolean);
+  const selectedPenandaTanganIds = penandaTanganIds.filter(Boolean);
 
   const updatePenyedia = (key: keyof typeof penyedia, value: string) => {
     setPenyedia((current) => ({ ...current, [key]: value }));
@@ -485,61 +481,112 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
   };
 
   const generateKeterangan = () => {
-    setTanggalPelaksana(formatTanggalIndonesia());
-    setKeteranganGenerated(true);
-  };
-
-  const addPegawaiRow = (type: 'ppk' | 'pbj') => {
-    if (type === 'ppk' && ppkIds.length < 5) {
-      setPpkIds((current) => [...current, '']);
-    }
-
-    if (type === 'pbj' && pbjIds.length < 5) {
-      setPbjIds((current) => [...current, '']);
-    }
-  };
-
-  const removePegawaiRow = (type: 'ppk' | 'pbj', index: number) => {
-    if (type === 'ppk') {
-      setPpkIds((current) => current.filter((_, itemIndex) => itemIndex !== index));
-    }
-
-    if (type === 'pbj') {
-      setPbjIds((current) => current.filter((_, itemIndex) => itemIndex !== index));
-    }
-  };
-
-  const updatePegawaiRow = (type: 'ppk' | 'pbj', index: number, value: string) => {
-    const updater = (current: string[]) =>
-      current.map((item, itemIndex) => (itemIndex === index ? value : item));
-
-    if (type === 'ppk') setPpkIds(updater);
-    if (type === 'pbj') setPbjIds(updater);
-  };
-
-  const addPenandaTangan = () => {
-    if (penandaTangan.length < 5) {
-      setPenandaTangan((current) => [...current, '']);
-    }
-  };
-
-  const updatePenandaTangan = (index: number, value: string) => {
-    setPenandaTangan((current) =>
-      current.map((item, itemIndex) => (itemIndex === index ? value : item))
+    setDokumenRows((rows) =>
+      rows.map((row, index) => ({
+        ...row,
+        nomorDokumen: getNomorDokumen(index),
+        tanggalPelaksanaan: todayIso(),
+      }))
     );
   };
 
-  const removePenandaTangan = (index: number) => {
-    setPenandaTangan((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index)
+  const addRow = (
+    setter: Dispatch<SetStateAction<string[]>>,
+    current: string[]
+  ) => {
+    if (current.length < 5) setter((rows) => [...rows, '']);
+  };
+
+  const removeRow = (
+    setter: Dispatch<SetStateAction<string[]>>,
+    index: number
+  ) => {
+    setter((rows) => rows.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const updateRow = (
+    setter: Dispatch<SetStateAction<string[]>>,
+    index: number,
+    value: string
+  ) => {
+    setter((rows) =>
+      rows.map((item, itemIndex) => (itemIndex === index ? value : item))
     );
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2500);
+    if (submitting) return;
+
+    if (!namaPenyedia.trim()) {
+      toast.error('Nama penyedia wajib diisi.');
+      return;
+    }
+    if (!detail.judulPengadaan.trim()) {
+      toast.error('Judul pengadaan wajib diisi.');
+      return;
+    }
+
+    const dokumen = dokumenRows
+      .filter((row) => row.nomorDokumen.trim() || row.tanggalPelaksanaan)
+      .map((row) => ({
+        jenis: row.jenis,
+        nomorDokumen: row.nomorDokumen.trim() || null,
+        tanggalPelaksanaan: row.tanggalPelaksanaan || null,
+      }));
+
+    const payload: BuatPengadaanInput = {
+      penyedia: {
+        nama: namaPenyedia.trim(),
+        alamat: penyedia.alamat.trim() || null,
+        namaDirektur: penyedia.namaDirektur.trim() || null,
+        nomorIdentitas: penyedia.nomorIdentitas.trim() || null,
+        teleponFax: penyedia.teleponFax.trim() || null,
+        email: penyedia.email.trim() || null,
+        jabatan: penyedia.jabatan.trim() || null,
+        npwp: penyedia.npwp.trim() || null,
+      },
+      hargaPenawaranSudahPajak: penyedia.hargaPenawaranPajak || null,
+      sertakanKak: kakAktif,
+      judul: detail.judulPengadaan.trim(),
+      nilaiHps: detail.perhitunganHps || null,
+      hargaDitawarkanVendor: detail.hargaVendor || null,
+      hasilNegosiasi: detail.hasilNegosiasi || null,
+      tempatPenandatanganan: detail.tempatPenandatanganan.trim() || null,
+      peserta: detail.peserta.trim() || null,
+      ppkIds: selectedPpkIds,
+      pbjIds: selectedPbjIds,
+      penandaTanganIds: selectedPenandaTanganIds,
+      ...(dokumen.length > 0 ? { dokumen } : {}),
+    };
+
+    setSubmitting(true);
+    try {
+      if (isEditMode && id) {
+        await pengadaanApi.perbarui(id, payload as PerbaruiPengadaanInput);
+        toast.success('Perubahan pengadaan berhasil disimpan.');
+      } else {
+        await pengadaanApi.buat(payload);
+        toast.success('Pengadaan berhasil disimpan.');
+      }
+      navigate('/pengadaan');
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Gagal menyimpan pengadaan.'));
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  if (loadingAwal) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <span className="inline-flex items-center gap-2 text-sm text-body dark:text-bodydark">
+          <FiLoader className="animate-spin" size={18} />
+          Memuat data...
+        </span>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -547,11 +594,11 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
         <div>
           <div className="mb-3">
             <Link
-              to="/dashboard"
+              to="/pengadaan"
               className="inline-flex items-center gap-2 text-sm font-medium text-primary transition hover:opacity-80"
             >
               <FiArrowLeft size={16} />
-              Kembali ke Dashboard
+              Kembali ke Daftar Pengadaan
             </Link>
           </div>
           <h2 className="text-title-md2 font-semibold text-black dark:text-white">
@@ -635,14 +682,6 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
 
         {dataPenyediaVisible && (
           <form onSubmit={handleSubmit} className="space-y-6">
-            {saved && (
-              <div className="rounded-sm border border-success/30 bg-success/10 px-5 py-4 text-sm font-semibold text-success">
-                {isEditMode
-                  ? 'Perubahan pengadaan berhasil disimpan sebagai dummy.'
-                  : 'Data pengadaan berhasil disimpan sebagai dummy.'}
-              </div>
-            )}
-
             <div className="rounded-sm border border-stroke bg-white p-5 shadow-default dark:border-strokedark dark:bg-boxdark sm:p-7.5">
               <SectionTitle
                 number="2"
@@ -657,50 +696,42 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                   label="Alamat"
                   value={penyedia.alamat}
                   onChange={(value) => updatePenyedia('alamat', value)}
-                  required
                 />
                 <TextInput
                   label="Nama Direktur"
                   value={penyedia.namaDirektur}
                   onChange={(value) => updatePenyedia('namaDirektur', value)}
-                  required
                 />
                 <TextInput
                   label="Nomor Identitas/NIP/NRP"
                   value={penyedia.nomorIdentitas}
                   onChange={(value) => updatePenyedia('nomorIdentitas', value)}
-                  required
                 />
                 <TextInput
                   label="Telepon/Fax"
                   value={penyedia.teleponFax}
                   onChange={(value) => updatePenyedia('teleponFax', value)}
-                  required
                 />
                 <TextInput
                   label="Email"
                   type="email"
                   value={penyedia.email}
                   onChange={(value) => updatePenyedia('email', value)}
-                  required
                 />
                 <TextInput
                   label="Jabatan"
                   value={penyedia.jabatan}
                   onChange={(value) => updatePenyedia('jabatan', value)}
-                  required
                 />
                 <MoneyInput
                   label="Harga Penawaran Sudah Pajak 11%"
                   value={penyedia.hargaPenawaranPajak}
                   onChange={(value) => updatePenyedia('hargaPenawaranPajak', value)}
-                  required
                 />
                 <TextInput
                   label="NPWP"
                   value={penyedia.npwp}
                   onChange={(value) => updatePenyedia('npwp', value)}
-                  required
                 />
               </div>
             </div>
@@ -710,7 +741,7 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                 <SectionTitle
                   number="3"
                   title="Keterangan Pelaksana"
-                  description="Dokumen wajib aktif otomatis. Kerangka Acuan Kerja bisa dipakai jika diperlukan."
+                  description="Klik Generate untuk mengisi nomor dan tanggal dokumen wajib. Kerangka Acuan Kerja opsional."
                 />
                 <button
                   type="button"
@@ -755,7 +786,7 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleDokumen.map((dokumen, index) => (
+                    {visibleDokumen.map((dokumen) => (
                       <tr
                         key={dokumen.nama}
                         className="border-b border-stroke last:border-b-0 dark:border-strokedark"
@@ -764,10 +795,12 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                           {dokumen.nama}
                         </td>
                         <td className="px-4 py-4 text-sm text-black dark:text-white">
-                          {keteranganGenerated ? tanggalPelaksana : '-'}
+                          {dokumen.tanggalPelaksanaan
+                            ? formatTanggalIndonesia(dokumen.tanggalPelaksanaan)
+                            : '-'}
                         </td>
                         <td className="px-4 py-4 text-sm font-semibold text-black dark:text-white">
-                          {keteranganGenerated ? getNomorDokumen(index) : '-'}
+                          {dokumen.nomorDokumen || '-'}
                         </td>
                       </tr>
                     ))}
@@ -793,32 +826,27 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                   label="Perhitungan HPS (Harga Perkiraan Sendiri Sudah Termasuk PPN)"
                   value={detail.perhitunganHps}
                   onChange={(value) => updateDetail('perhitunganHps', value)}
-                  required
                 />
                 <MoneyInput
                   label="Harga yang Ditawarkan Vendor"
                   value={detail.hargaVendor}
                   onChange={(value) => updateDetail('hargaVendor', value)}
-                  required
                 />
                 <MoneyInput
                   label="Hasil Negosiasi"
                   value={detail.hasilNegosiasi}
                   onChange={(value) => updateDetail('hasilNegosiasi', value)}
-                  required
                 />
                 <TextInput
                   label="Tempat Penandatanganan"
                   value={detail.tempatPenandatanganan}
                   onChange={(value) => updateDetail('tempatPenandatanganan', value)}
-                  required
                 />
                 <TextInput
                   label="Peserta"
                   value={detail.peserta}
                   onChange={(value) => updateDetail('peserta', value)}
                   placeholder="Pisahkan dengan koma jika lebih dari satu"
-                  required
                 />
               </div>
             </div>
@@ -833,7 +861,7 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                   />
                   <button
                     type="button"
-                    onClick={() => addPegawaiRow('ppk')}
+                    onClick={() => addRow(setPpkIds, ppkIds)}
                     disabled={ppkIds.length >= 5}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded bg-primary px-3 text-sm font-medium text-white transition hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -842,18 +870,19 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                   </button>
                 </div>
                 <div className="space-y-4">
-                  {ppkIds.map((id, index) => (
+                  {ppkIds.map((value, index) => (
                     <div key={`ppk-${index}`} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
                       <PegawaiPicker
                         label={`Nama Lengkap PPK ${index + 1}`}
-                        value={id}
+                        value={value}
+                        options={pegawaiOptions}
                         excludedIds={selectedPpkIds}
-                        onChange={(value) => updatePegawaiRow('ppk', index, value)}
+                        onChange={(next) => updateRow(setPpkIds, index, next)}
                       />
                       {ppkIds.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => removePegawaiRow('ppk', index)}
+                          onClick={() => removeRow(setPpkIds, index)}
                           className="inline-flex h-[52px] w-full items-center justify-center rounded border border-danger text-danger transition hover:bg-danger/10 sm:w-12"
                           aria-label="Hapus PPK"
                           title="Hapus PPK"
@@ -875,7 +904,7 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                   />
                   <button
                     type="button"
-                    onClick={() => addPegawaiRow('pbj')}
+                    onClick={() => addRow(setPbjIds, pbjIds)}
                     disabled={pbjIds.length >= 5}
                     className="inline-flex h-10 items-center justify-center gap-2 rounded bg-primary px-3 text-sm font-medium text-white transition hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                   >
@@ -884,18 +913,19 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                   </button>
                 </div>
                 <div className="space-y-4">
-                  {pbjIds.map((id, index) => (
+                  {pbjIds.map((value, index) => (
                     <div key={`pbj-${index}`} className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
                       <PegawaiPicker
                         label={`Nama Lengkap PBJ ${index + 1}`}
-                        value={id}
+                        value={value}
+                        options={pegawaiOptions}
                         excludedIds={selectedPbjIds}
-                        onChange={(value) => updatePegawaiRow('pbj', index, value)}
+                        onChange={(next) => updateRow(setPbjIds, index, next)}
                       />
                       {pbjIds.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => removePegawaiRow('pbj', index)}
+                          onClick={() => removeRow(setPbjIds, index)}
                           className="inline-flex h-[52px] w-full items-center justify-center rounded border border-danger text-danger transition hover:bg-danger/10 sm:w-12"
                           aria-label="Hapus PBJ"
                           title="Hapus PBJ"
@@ -914,12 +944,12 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                 <SectionTitle
                   number="7"
                   title="Master Data Tanda Tangan"
-                  description="Isi nama penanda tangan dokumen, maksimal 5 nama."
+                  description="Pilih pegawai penanda tangan dokumen, maksimal 5 nama."
                 />
                 <button
                   type="button"
-                  onClick={addPenandaTangan}
-                  disabled={penandaTangan.length >= 5}
+                  onClick={() => addRow(setPenandaTanganIds, penandaTanganIds)}
+                  disabled={penandaTanganIds.length >= 5}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded bg-primary px-4 text-sm font-medium text-white transition hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <FiPlus size={16} />
@@ -928,23 +958,25 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
               </div>
 
               <div className="space-y-4">
-                {penandaTangan.map((nama, index) => (
+                {penandaTanganIds.map((value, index) => (
                   <div
                     key={`penanda-tangan-${index}`}
                     className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
                   >
-                    <TextInput
+                    <PegawaiPicker
                       label={`Nama Penanda Tangan ${index + 1}`}
-                      value={nama}
-                      onChange={(value) => updatePenandaTangan(index, value)}
-                      placeholder="Contoh: I Made Surya Pratama"
-                      required
+                      value={value}
+                      options={pegawaiOptions}
+                      excludedIds={selectedPenandaTanganIds}
+                      onChange={(next) =>
+                        updateRow(setPenandaTanganIds, index, next)
+                      }
                     />
-                    {penandaTangan.length > 1 && (
+                    {penandaTanganIds.length > 1 && (
                       <button
                         type="button"
-                        onClick={() => removePenandaTangan(index)}
-                        className="inline-flex h-[46px] w-full items-center justify-center rounded border border-danger text-danger transition hover:bg-danger/10 sm:w-12"
+                        onClick={() => removeRow(setPenandaTanganIds, index)}
+                        className="inline-flex h-[52px] w-full items-center justify-center rounded border border-danger text-danger transition hover:bg-danger/10 sm:w-12"
                         aria-label="Hapus penanda tangan"
                         title="Hapus penanda tangan"
                       >
@@ -955,7 +987,7 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
                 ))}
 
                 <div className="rounded bg-gray-2 px-4 py-3 text-sm text-body dark:bg-meta-4 dark:text-bodydark">
-                  Jumlah penanda tangan: {penandaTangan.length}/5
+                  Jumlah penanda tangan: {selectedPenandaTanganIds.length}/5
                 </div>
               </div>
             </div>
@@ -963,16 +995,21 @@ const ProcurementCreate = ({ mode = 'create' }: { mode?: 'create' | 'edit' }) =>
             <div className="sticky bottom-0 z-20 -mx-4 border-t border-stroke bg-whiten/95 px-4 py-4 backdrop-blur dark:border-strokedark dark:bg-boxdark-2/95 sm:-mx-6 lg:-mx-8.5 lg:px-8.5">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
                 <Link
-                  to="/dashboard"
+                  to="/pengadaan"
                   className="inline-flex items-center justify-center rounded border border-stroke px-5 py-2.5 text-sm font-medium text-black transition hover:bg-gray-2 dark:border-strokedark dark:text-white dark:hover:bg-meta-4"
                 >
                   Batal
                 </Link>
                 <button
                   type="submit"
-                  className="inline-flex items-center justify-center gap-2 rounded bg-primary px-5 py-2.5 text-sm font-medium text-white transition hover:bg-opacity-90"
+                  disabled={submitting}
+                  className="inline-flex items-center justify-center gap-2 rounded bg-primary px-5 py-2.5 text-sm font-medium text-white transition hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <FiSave size={18} />
+                  {submitting ? (
+                    <FiLoader className="animate-spin" size={18} />
+                  ) : (
+                    <FiSave size={18} />
+                  )}
                   {isEditMode ? 'Simpan Perubahan' : 'Simpan Pengadaan'}
                 </button>
               </div>

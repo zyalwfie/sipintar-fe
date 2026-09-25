@@ -8,10 +8,12 @@ import {
   FiAlertCircle,
   FiLoader,
   FiLayout,
+  FiLoader,
   FiSave,
   FiX,
 } from 'react-icons/fi';
 import { Link, useParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import {
   DefaultDocumentImages,
   DocumentAssetKind,
@@ -23,6 +25,8 @@ import {
   loadDefaultDocumentImages,
   saveDocumentHeaderFooterVisibility,
 } from '../utils/documentTemplate';
+import { dokumenApi, DOKUMEN_SLUG, getApiErrorMessage, pengadaanApi } from '../api';
+import type { NilaiEfektif } from '../api';
 
 const dokumenPelaksana = [
   'Surat Undangan Pengadaan',
@@ -43,101 +47,258 @@ const dokumenPelaksana = [
   'Pengajuan Pembayaran',
 ];
 
-const pengadaanTitles = [
-  'Pengadaan Laptop Operasional Kantor',
-  'Pengadaan Meja dan Kursi Ruang Rapat',
-  'Pengadaan Lisensi Software Akuntansi',
-  'Pengadaan Kendaraan Operasional Cabang',
-  'Pengadaan Perangkat Jaringan Internal',
-];
+// Data pengadaan (penyedia + pegawai yang ditugaskan) hasil adaptasi
+// dari GET /pengadaan/:id untuk dipakai template dokumen.
+type DokumenPegawaiView = {
+  id: string;
+  nama: string;
+  nrp: string;
+  jabatan?: string;
+};
 
-const ppkPengadaan = [
-  { nama: 'I Made Surya Pratama', nrp: '19870412' },
-  { nama: 'Ayu Lestari Dewi', nrp: '19940718' },
-];
+type DokumenPengadaanView = {
+  namaPenyedia: string;
+  namaDirektur: string;
+  jabatanDirektur: string;
+  alamat: string;
+  email: string;
+  npwp: string;
+  judulPengadaan: string;
+  hps: string;
+  hasilNegosiasi: string;
+  tempatPenandatanganan: string;
+  ppk: DokumenPegawaiView[];
+  pbj: DokumenPegawaiView[];
+  penandaTangan: DokumenPegawaiView[];
+};
 
-const pengadaanData = [
-  {
-    namaPenyedia: 'PT Nusa Teknologi Mandiri',
-    namaDirektur: 'I Gede Wirawan',
-    jabatanDirektur: 'Direktur',
-    alamat: 'Jl. Langko No. 12, Mataram',
-    email: 'admin.1@vendor.co.id',
-    judulPengadaan: 'Pengadaan Laptop Operasional Kantor',
-    hps: '185000000',
-    hasilNegosiasi: '172500000',
-    tempatPenandatanganan: 'Mataram',
-    ppk: ppkPengadaan,
-    pbj: [
-      { nama: 'Ni Putu Maharani', nrp: '19910622' },
-      { nama: 'Muhammad Rizal Fahri', nrp: '19891105' },
+const emptyPengadaanView: DokumenPengadaanView = {
+  namaPenyedia: '',
+  namaDirektur: '',
+  jabatanDirektur: '',
+  alamat: '',
+  email: '',
+  npwp: '',
+  judulPengadaan: '',
+  hps: '',
+  hasilNegosiasi: '',
+  tempatPenandatanganan: '',
+  ppk: [],
+  pbj: [],
+  penandaTangan: [],
+};
+
+// ======================================================
+// PEMETAAN FIELD FORM <-> FIELD API PER DOKUMEN
+// ======================================================
+//
+// Setiap dokumen memetakan field form ke field body API.
+// `tipe` menentukan transformasi saat memuat nilaiEfektif
+// dan saat menyimpan. Diisi bertahap per dokumen.
+type TipeField = 'text' | 'date' | 'time' | 'rupiah' | 'pegawai';
+type PetaField = { form: string; api: string; tipe?: TipeField };
+type PetaDokumen = { slug: string; fields: PetaField[] };
+
+const PETA_DOKUMEN: Record<string, PetaDokumen> = {
+  'Surat Undangan Pengadaan': {
+    slug: 'surat-undangan-pengadaan',
+    fields: [
+      { form: 'lampiran', api: 'lampiran' },
+      { form: 'kepadaYth', api: 'kepadaYth' },
+      { form: 'di', api: 'alamatTujuan' },
+      { form: 'email', api: 'email' },
+      { form: 'perihal', api: 'perihal' },
+      { form: 'namaPaketPekerjaan', api: 'namaPaketPekerjaan' },
+      { form: 'nilaiTotalHps', api: 'nilaiTotalHps', tipe: 'rupiah' },
+      { form: 'tempatSurat', api: 'tempatSurat' },
+      { form: 'tanggalSurat', api: 'tanggalSurat', tipe: 'date' },
+      { form: 'hariPelaksanaan', api: 'hariPelaksanaan', tipe: 'date' },
+      { form: 'waktuMulai', api: 'waktuPelaksanaanMulai', tipe: 'time' },
+      { form: 'waktuSelesai', api: 'waktuPelaksanaanSelesai', tipe: 'time' },
+      { form: 'tempatPelaksanaan', api: 'tempatPelaksanaan' },
+      { form: 'namaKegiatan', api: 'namaKegiatan' },
+      { form: 'tanggalKegiatan', api: 'tanggalKegiatan', tipe: 'date' },
+      { form: 'waktuKegiatanMulai', api: 'waktuKegiatanMulai', tipe: 'time' },
+      { form: 'waktuKegiatanSelesai', api: 'waktuKegiatanSelesai', tipe: 'time' },
+      { form: 'keteranganTujuan', api: 'keteranganTujuanDokumen' },
+      { form: 'keteranganPermohonan', api: 'keteranganPermohonan' },
+      { form: 'penandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
-  {
-    namaPenyedia: 'CV Sinar Berkah Abadi',
-    namaDirektur: 'Hendra Saputra',
-    jabatanDirektur: 'Direktur',
-    alamat: 'Jl. Pejanggik No. 45, Mataram',
-    email: 'admin.2@vendor.co.id',
-    judulPengadaan: 'Pengadaan Meja dan Kursi Ruang Rapat',
-    hps: '72500000',
-    hasilNegosiasi: '60000000',
-    tempatPenandatanganan: 'Mataram',
-    ppk: ppkPengadaan,
-    pbj: [
-      { nama: 'Ni Putu Maharani', nrp: '19910622' },
-      { nama: 'Siti Rahmawati', nrp: '19920914' },
+  'Berita Acara Penjelasan Pekerjaan': {
+    slug: 'berita-acara-penjelasan-pekerjaan',
+    fields: [
+      { form: 'beritaTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'beritaPukul', api: 'pukul', tipe: 'time' },
+      { form: 'beritaTempat', api: 'tempat' },
+      { form: 'beritaPeserta', api: 'peserta' },
+      { form: 'beritaNamaPenjelasanPekerjaan', api: 'namaPenjelasanPekerjaan' },
+      { form: 'beritaRapatDipimpinPpk', api: 'pimpinanRapatPpkId', tipe: 'pegawai' },
+      {
+        form: 'beritaPenjelasanAdministrasiPpbj',
+        api: 'pemberiPenjelasanUmumId',
+        tipe: 'pegawai',
+      },
+      {
+        form: 'beritaPenjelasanTeknikPpbj',
+        api: 'pemberiPenjelasanTeknikId',
+        tipe: 'pegawai',
+      },
+      { form: 'beritaRapatTanyaJawab', api: 'pemimpinTanyaJawabId', tipe: 'pegawai' },
+      { form: 'beritaKeteranganAwal', api: 'keteranganAwal' },
+      { form: 'beritaKeteranganTujuan', api: 'keteranganTujuan' },
+      { form: 'beritaPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
-  {
-    namaPenyedia: 'PT Prima Solusi Digital',
-    namaDirektur: 'Dewi Kartika Sari',
-    jabatanDirektur: 'Direktur',
-    alamat: 'Jl. Sriwijaya No. 18, Mataram',
-    email: 'admin.3@vendor.co.id',
-    judulPengadaan: 'Pengadaan Lisensi Software Akuntansi',
-    hps: '128750000',
-    hasilNegosiasi: '116250000',
-    tempatPenandatanganan: 'Mataram',
-    ppk: ppkPengadaan,
-    pbj: [
-      { nama: 'Muhammad Rizal Fahri', nrp: '19891105' },
-      { nama: 'Gede Arya Wiratama', nrp: '19850330' },
+  'Bukti Pengambilan Dokumen Pengadaan': {
+    slug: 'bukti-pengambilan-dokumen-pengadaan',
+    fields: [
+      { form: 'buktiPekerjaan', api: 'pekerjaan' },
+      { form: 'buktiTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'buktiWaktu', api: 'waktu', tipe: 'time' },
+      { form: 'buktiNamaPerusahaan', api: 'namaPerusahaan' },
+      { form: 'buktiNamaPejabatPerusahaan', api: 'namaPejabatPerusahaan' },
+      { form: 'buktiJabatanPejabat', api: 'jabatanPejabat' },
+      { form: 'buktiPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
-  {
-    namaPenyedia: 'CV Karya Logistik Nusantara',
-    namaDirektur: 'Fajar Nugroho',
-    jabatanDirektur: 'Direktur',
-    alamat: 'Jl. Sandubaya No. 7, Mataram',
-    email: 'admin.4@vendor.co.id',
-    judulPengadaan: 'Pengadaan Kendaraan Operasional Cabang',
-    hps: '342000000',
-    hasilNegosiasi: '329500000',
-    tempatPenandatanganan: 'Mataram',
-    ppk: ppkPengadaan,
-    pbj: [
-      { nama: 'Ayu Lestari Dewi', nrp: '19940718' },
-      { nama: 'Ni Putu Maharani', nrp: '19910622' },
+  'Berita Acara Pemasukan dan Pembukaan Dokumen': {
+    slug: 'berita-acara-pemasukan-dan-pembukaan-dokumen',
+    fields: [
+      { form: 'baPemasukanTanggalDokumen', api: 'tanggalBeritaAcara', tipe: 'date' },
+      { form: 'baPemasukanPukul', api: 'pukul', tipe: 'time' },
+      { form: 'baPemasukanNamaPekerjaan', api: 'pengadaanPekerjaan' },
+      { form: 'baPemasukanPejabatPengadaan', api: 'pejabatPengadaan' },
+      { form: 'baPemasukanPenyedia', api: 'penyediaBarangJasa' },
+      {
+        form: 'baPemasukanTanggalPemasukan',
+        api: 'tanggalPemasukanDokumenPenawaran',
+        tipe: 'date',
+      },
+      { form: 'baPemasukanMasaBerlaku', api: 'masaBerlakuPenawaran' },
+      { form: 'baPemasukanNilaiPenawaran', api: 'nilaiPenawaran', tipe: 'rupiah' },
+      { form: 'baPemasukanRincianHarga', api: 'rincianHarga' },
+      { form: 'baPemasukanKeterangan', api: 'keterangan' },
+      { form: 'baPemasukanPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
-  {
-    namaPenyedia: 'PT Citra Sarana Sejahtera',
-    namaDirektur: 'Agus Mahendra',
-    jabatanDirektur: 'Direktur',
-    alamat: 'Jl. Udayana No. 22, Mataram',
-    email: 'admin.5@vendor.co.id',
-    judulPengadaan: 'Pengadaan Perangkat Jaringan Internal',
-    hps: '96500000',
-    hasilNegosiasi: '84000000',
-    tempatPenandatanganan: 'Mataram',
-    ppk: ppkPengadaan,
-    pbj: [
-      { nama: 'Siti Rahmawati', nrp: '19920914' },
-      { nama: 'Muhammad Rizal Fahri', nrp: '19891105' },
+  'Tanda Terima Pemasukan Dokumen': {
+    slug: 'tanda-terima-pemasukan-dokumen',
+    fields: [
+      { form: 'tandaTerimaPekerjaan', api: 'pekerjaan' },
+      { form: 'tandaTerimaTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'tandaTerimaWaktu', api: 'waktu', tipe: 'time' },
+      { form: 'tandaTerimaNamaPerusahaan', api: 'namaPerusahaan' },
+      { form: 'tandaTerimaNamaPejabat', api: 'namaPejabatPerwakilan' },
+      { form: 'tandaTerimaJabatan', api: 'jabatan' },
+      { form: 'tandaTerimaPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
     ],
   },
-];
+  'Berita Acara Evaluasi Dokumen': {
+    slug: 'berita-acara-evaluasi-dokumen',
+    fields: [
+      { form: 'baEvaluasiTanggalDokumen', api: 'tanggalEvaluasiDokumen', tipe: 'date' },
+      { form: 'baEvaluasiNamaPekerjaan', api: 'namaPekerjaan' },
+      { form: 'baEvaluasiNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'baEvaluasiNomorBaPemasukan', api: 'nomorBaPemasukanDokumen' },
+      { form: 'baEvaluasiNilaiPenawaran', api: 'nilaiPenawaran', tipe: 'rupiah' },
+      { form: 'baEvaluasiJadwalPelaksanaan', api: 'jadwalPelaksanaanPekerjaan' },
+      { form: 'baEvaluasiKualifikasiSiup', api: 'kualifikasiSiupNib' },
+      { form: 'baEvaluasiKualifikasiNpwp', api: 'kualifikasiNpwp' },
+      { form: 'baEvaluasiKualifikasiKtp', api: 'kualifikasiKtp' },
+      { form: 'baEvaluasiKualifikasiKswp', api: 'kualifikasiKswp' },
+      { form: 'baEvaluasiPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
+  'Undangan Klarifikasi dan Negosiasi': {
+    slug: 'undangan-klarifikasi-dan-negosiasi',
+    fields: [
+      { form: 'uknLampiran', api: 'lampiran' },
+      { form: 'uknTempatSurat', api: 'tempatSurat' },
+      { form: 'uknTanggalSurat', api: 'tanggalSurat', tipe: 'date' },
+      { form: 'uknKepadaJabatan', api: 'jabatanPenerima' },
+      { form: 'uknNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'uknAlamat', api: 'alamat' },
+      { form: 'uknPerihal', api: 'perihal' },
+      { form: 'uknPekerjaan', api: 'pekerjaan' },
+      { form: 'uknWaktu', api: 'waktu', tipe: 'time' },
+      { form: 'uknHari', api: 'hariTanggalPelaksanaan', tipe: 'date' },
+      { form: 'uknTempat', api: 'tempat' },
+      { form: 'uknParagrafPembuka', api: 'paragrafPembuka' },
+      { form: 'uknParagrafPenutup', api: 'paragrafPenutup' },
+      { form: 'uknPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
+  'Berita Acara Klarifikasi dan Negosiasi Dokumen': {
+    slug: 'berita-acara-klarifikasi-dan-negosiasi-dokumen',
+    fields: [
+      { form: 'baknTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'baknTempat', api: 'tempat' },
+      { form: 'baknNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'baknPekerjaan', api: 'untukPekerjaan' },
+      { form: 'baknHasil1', api: 'hasilKlarifikasiTeknis' },
+      { form: 'baknHasil2', api: 'hasilNegosiasiHarga' },
+      { form: 'baknHasil3', api: 'hasilPembuktianKualifikasi' },
+      { form: 'baknKeteranganPenutup', api: 'keteranganPenutup' },
+      { form: 'baknNamaDirektur', api: 'namaDirekturPenyedia' },
+      { form: 'baknPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
+  'Berita Acara Hasil Pengadaan Langsung': {
+    slug: 'berita-acara-hasil-pengadaan-langsung',
+    fields: [
+      { form: 'bahplTanggal', api: 'hariTanggal', tipe: 'date' },
+      { form: 'bahplPekerjaan', api: 'pekerjaan' },
+      { form: 'bahplHps', api: 'hps', tipe: 'rupiah' },
+      { form: 'bahplUnsurEvaluasi', api: 'unsurEvaluasi' },
+      { form: 'bahplNamaPerusahaan', api: 'namaPerusahaan' },
+      { form: 'bahplHargaPenawaran', api: 'hargaPenawaran', tipe: 'rupiah' },
+      { form: 'bahplEvalAdministrasi', api: 'evaluasiAdministrasi' },
+      { form: 'bahplEvalTeknis', api: 'evaluasiTeknis' },
+      { form: 'bahplEvalHarga', api: 'evaluasiHarga' },
+      { form: 'bahplEvalKualifikasi', api: 'evaluasiKualifikasi' },
+      { form: 'bahplKet', api: 'keteranganEvaluasi' },
+      { form: 'bahplNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'bahplNamaDirektur', api: 'namaDirekturUtama' },
+      { form: 'bahplAlamat', api: 'alamatPerusahaan' },
+      { form: 'bahplNpwp', api: 'npwp' },
+      { form: 'bahplHargaNegosiasi', api: 'hargaHasilNegosiasi', tipe: 'rupiah' },
+      { form: 'bahplKeteranganPenutup', api: 'keteranganPenutup' },
+      { form: 'bahplPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
+  'Penunjukan Penyedia Pengadaan': {
+    slug: 'penunjukan-penyedia-pengadaan',
+    fields: [
+      { form: 'penunjukanTempat', api: 'tempatSurat' },
+      { form: 'penunjukanTanggal', api: 'tanggalSurat', tipe: 'date' },
+      { form: 'penunjukanLampiran', api: 'lampiran' },
+      { form: 'penunjukanJabatanTujuan', api: 'jabatanTujuan' },
+      { form: 'penunjukanKepada', api: 'kepadaYth' },
+      { form: 'penunjukanDi', api: 'alamatTujuan' },
+      { form: 'penunjukanPerihal', api: 'perihal' },
+      { form: 'penunjukanTanggalPenawaran', api: 'tanggalSuratPenawaran', tipe: 'date' },
+      { form: 'penunjukanNilaiNegosiasi', api: 'hasilNegosiasiHarga', tipe: 'rupiah' },
+      { form: 'penunjukanKeteranganTindakLanjut', api: 'keteranganTindakLanjut' },
+      { form: 'penunjukanPenandaTangan', api: 'penandaTanganPbjId', tipe: 'pegawai' },
+    ],
+  },
+  'SPK atau Kontrak Kerja': {
+    slug: 'spk-atau-kontrak-kerja',
+    fields: [
+      { form: 'spkTanggal', api: 'tanggalSpk', tipe: 'date' },
+      { form: 'spkPaketPengadaan', api: 'paketPengadaan' },
+      { form: 'spkNomorSuratUndangan', api: 'nomorSuratUndangan' },
+      { form: 'spkTanggalSuratUndangan', api: 'tanggalSuratUndangan', tipe: 'date' },
+      { form: 'spkSumberDana', api: 'sumberDana' },
+      { form: 'spkNilaiKontrak', api: 'nilaiKontrak', tipe: 'rupiah' },
+      { form: 'spkPerusahaanPenyedia', api: 'namaPerusahaanPenyedia' },
+      { form: 'spkNamaPenyedia', api: 'namaPenyedia' },
+      { form: 'spkJabatanPenyedia', api: 'jabatanPenyedia' },
+      { form: 'spkPpk', api: 'penandaTanganPpkId', tipe: 'pegawai' },
+    ],
+  },
+};
 
 type ProcurementViewData = (typeof pengadaanData)[number];
 
@@ -435,7 +596,7 @@ const PbjSelect = ({
 }: {
   label: string;
   value: string;
-  options: { nama: string; nrp: string }[];
+  options: { id: string; nama: string; nrp: string }[];
   onChange: (value: string) => void;
 }) => (
   <div>
@@ -447,8 +608,9 @@ const PbjSelect = ({
       onChange={(event) => onChange(event.target.value)}
       className="w-full rounded border border-stroke bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white"
     >
+      <option value="">Pilih pegawai</option>
       {options.map((pegawai) => (
-        <option key={pegawai.nrp} value={pegawai.nrp}>
+        <option key={pegawai.id} value={pegawai.id}>
           {pegawai.nama} - NRP : {pegawai.nrp}
         </option>
       ))}
@@ -557,14 +719,14 @@ const ProcurementDocument = () => {
   const selectedIndex = Math.max(Number(documentIndex ?? 1) - 1, 0);
   const documentName =
     dokumenPelaksana[selectedIndex] ?? dokumenPelaksana[0];
-  const [loadedProcurement, setLoadedProcurement] =
-    useState<ProcurementViewData | null>(null);
-  const fallbackPengadaan =
-    pengadaanData[Math.max(Number(id ?? 1) - 1, 0)] ?? pengadaanData[0];
-  const selectedPengadaan = loadedProcurement ?? fallbackPengadaan;
-  const pengadaanTitle =
-    pengadaanTitles[Math.max(Number(id ?? 1) - 1, 0)] ??
-    selectedPengadaan.judulPengadaan;
+  const slug = DOKUMEN_SLUG[selectedIndex] ?? null;
+  const [selectedPengadaan, setSelectedPengadaan] =
+    useState<DokumenPengadaanView>(emptyPengadaanView);
+  const [memuat, setMemuat] = useState(true);
+  const [muatError, setMuatError] = useState('');
+  const [menyimpan, setMenyimpan] = useState(false);
+  const [sudahDisimpan, setSudahDisimpan] = useState(false);
+  const pengadaanTitle = selectedPengadaan.judulPengadaan;
   const isPreview = action === 'lihat';
   const isSuratUndangan =
     !isPreview && documentName === 'Surat Undangan Pengadaan';
@@ -1150,31 +1312,34 @@ const ProcurementDocument = () => {
     saveDocumentHeaderFooterVisibility(paketKey, documentKey, next);
   };
 
-  const selectedPenandaTangan =
-    selectedPengadaan.pbj.find(
-      (pegawai) => pegawai.nrp === form.penandaTangan
-    ) ?? selectedPengadaan.pbj[0];
-  const getPbjByNrp = (nrp: string) =>
-    selectedPengadaan.pbj.find((pegawai) => pegawai.nrp === nrp) ??
-    selectedPengadaan.pbj[0];
-  const beritaRapatDipimpin = getPbjByNrp(form.beritaRapatDipimpinPpk);
-  const beritaAdministrasi = getPbjByNrp(
+  // Pegawai dicari berdasarkan id (nilai select), lintas peran
+  // (PPK/PBJ/penanda tangan) supaya template selalu menemukan orangnya.
+  const pegawaiKosong: DokumenPegawaiView = { id: '', nama: '', nrp: '' };
+  const semuaPegawai: DokumenPegawaiView[] = [
+    ...selectedPengadaan.ppk,
+    ...selectedPengadaan.pbj,
+    ...selectedPengadaan.penandaTangan,
+  ];
+  const getPegawaiById = (idPegawai: string): DokumenPegawaiView =>
+    semuaPegawai.find((pegawai) => pegawai.id === idPegawai) ?? pegawaiKosong;
+
+  const selectedPenandaTangan = getPegawaiById(form.penandaTangan);
+  const beritaRapatDipimpin = getPegawaiById(form.beritaRapatDipimpinPpk);
+  const beritaAdministrasi = getPegawaiById(
     form.beritaPenjelasanAdministrasiPpbj
   );
-  const beritaTeknik = getPbjByNrp(form.beritaPenjelasanTeknikPpbj);
-  const beritaTanyaJawab = getPbjByNrp(form.beritaRapatTanyaJawab);
-  const beritaPenandaTangan = getPbjByNrp(form.beritaPenandaTangan);
-  const buktiPenandaTangan = getPbjByNrp(form.buktiPenandaTangan);
-  const baPemasukanPenandaTangan = getPbjByNrp(form.baPemasukanPenandaTangan);
-  const tandaTerimaPenandaTangan = getPbjByNrp(form.tandaTerimaPenandaTangan);
-  const baEvaluasiPenandaTangan = getPbjByNrp(form.baEvaluasiPenandaTangan);
-  const uknPenandaTangan = getPbjByNrp(form.uknPenandaTangan);
-  const baknPenandaTangan = getPbjByNrp(form.baknPenandaTangan);
-  const bahplPenandaTangan = getPbjByNrp(form.bahplPenandaTangan);
-  const penunjukanPenandaTangan = getPbjByNrp(form.penunjukanPenandaTangan);
-  const spkPpk =
-    selectedPengadaan.ppk.find((pegawai) => pegawai.nrp === form.spkPpk) ??
-    selectedPengadaan.ppk[0];
+  const beritaTeknik = getPegawaiById(form.beritaPenjelasanTeknikPpbj);
+  const beritaTanyaJawab = getPegawaiById(form.beritaRapatTanyaJawab);
+  const beritaPenandaTangan = getPegawaiById(form.beritaPenandaTangan);
+  const buktiPenandaTangan = getPegawaiById(form.buktiPenandaTangan);
+  const baPemasukanPenandaTangan = getPegawaiById(form.baPemasukanPenandaTangan);
+  const tandaTerimaPenandaTangan = getPegawaiById(form.tandaTerimaPenandaTangan);
+  const baEvaluasiPenandaTangan = getPegawaiById(form.baEvaluasiPenandaTangan);
+  const uknPenandaTangan = getPegawaiById(form.uknPenandaTangan);
+  const baknPenandaTangan = getPegawaiById(form.baknPenandaTangan);
+  const bahplPenandaTangan = getPegawaiById(form.bahplPenandaTangan);
+  const penunjukanPenandaTangan = getPegawaiById(form.penunjukanPenandaTangan);
+  const spkPpk = getPegawaiById(form.spkPpk);
   const kegiatanRows = [
     {
       nama: form.namaKegiatan || 'Penjelasan Pekerjaan',
@@ -1201,6 +1366,142 @@ const ProcurementDocument = () => {
 
   const updateForm = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  // Dokumen yang sudah punya pemetaan field ke API (bisa dimuat & disimpan).
+  const dokumenTerhubung = slug !== null && Boolean(PETA_DOKUMEN[documentName]);
+
+  // Mengisi form dari nilai efektif backend. Field bernilai
+  // kosong dibiarkan memakai default statis form.
+  const terapkanNilaiEfektif = (ne: NilaiEfektif) => {
+    if (typeof ne.nomorDokumen === 'string' && ne.nomorDokumen) {
+      setNomorDokumen(ne.nomorDokumen);
+    }
+
+    const peta = PETA_DOKUMEN[documentName];
+    if (!peta) return;
+
+    setForm((current) => {
+      const patch: Record<string, string> = {};
+
+      for (const field of peta.fields) {
+        const raw = ne[field.api];
+        if (raw == null || raw === '') continue;
+
+        let value = String(raw);
+        if (field.tipe === 'date') value = value.slice(0, 10);
+        patch[field.form] = value;
+      }
+
+      return { ...current, ...patch };
+    });
+  };
+
+  // Menyusun body PUT dari nilai form untuk dokumen aktif.
+  const bangunBody = (): Record<string, unknown> | null => {
+    const peta = PETA_DOKUMEN[documentName];
+    if (!peta) return null;
+
+    const body: Record<string, unknown> = {
+      nomorDokumen: nomorDokumen.trim() || null,
+    };
+
+    const nilaiForm = form as unknown as Record<string, string>;
+
+    for (const field of peta.fields) {
+      const value = (nilaiForm[field.form] ?? '').trim();
+      body[field.api] = value === '' ? null : value;
+    }
+
+    return body;
+  };
+
+  // Memuat data pengadaan + isi dokumen aktif dari backend.
+  useEffect(() => {
+    if (!id) return;
+
+    let batal = false;
+
+    const muat = async () => {
+      setMemuat(true);
+      setMuatError('');
+
+      try {
+        const detail = await pengadaanApi.detail(id);
+        if (batal) return;
+
+        setSelectedPengadaan({
+          namaPenyedia: detail.penyediaNama,
+          namaDirektur: detail.penyediaDirektur ?? '',
+          jabatanDirektur: detail.penyediaJabatan ?? '',
+          alamat: detail.penyediaAlamat ?? '',
+          email: detail.penyediaEmail ?? '',
+          npwp: detail.penyediaNpwp ?? '',
+          judulPengadaan: detail.judul,
+          hps: detail.nilaiHps ?? '',
+          hasilNegosiasi: detail.hasilNegosiasi ?? '',
+          tempatPenandatanganan: detail.tempatPenandatanganan ?? '',
+          ppk: detail.ppk.map((p) => ({
+            id: p.id,
+            nama: p.nama,
+            nrp: p.nrp,
+            jabatan: p.jabatan,
+          })),
+          pbj: detail.pbj.map((p) => ({
+            id: p.id,
+            nama: p.nama,
+            nrp: p.nrp,
+            jabatan: p.jabatan,
+          })),
+          penandaTangan: detail.penandaTangan.map((p) => ({
+            id: p.id,
+            nama: p.nama,
+            nrp: p.nrp,
+            jabatan: p.jabatan,
+          })),
+        });
+
+        if (slug) {
+          const hasil = await dokumenApi.ambil(id, slug);
+          if (batal) return;
+
+          setSudahDisimpan(hasil.sudahDisimpan);
+          terapkanNilaiEfektif(hasil.nilaiEfektif);
+        }
+      } catch (error) {
+        if (!batal) {
+          setMuatError(getApiErrorMessage(error, 'Gagal memuat dokumen.'));
+        }
+      } finally {
+        if (!batal) setMemuat(false);
+      }
+    };
+
+    muat();
+
+    return () => {
+      batal = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, slug]);
+
+  const simpanDokumen = async () => {
+    if (!id || !slug || menyimpan) return;
+
+    const body = bangunBody();
+    if (!body) return;
+
+    setMenyimpan(true);
+    try {
+      const hasil = await dokumenApi.simpan(id, slug, body);
+      setSudahDisimpan(hasil.sudahDisimpan);
+      terapkanNilaiEfektif(hasil.nilaiEfektif);
+      toast.success(`${documentName} berhasil disimpan.`);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Gagal menyimpan dokumen.'));
+    } finally {
+      setMenyimpan(false);
+    }
   };
 
   const openResultModal = () => {
@@ -2649,6 +2950,32 @@ const ProcurementDocument = () => {
     printDocument.close();
   };
 
+  if (memuat) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <span className="inline-flex items-center gap-2 text-sm text-body dark:text-bodydark">
+          <FiLoader className="animate-spin" size={18} />
+          Memuat dokumen...
+        </span>
+      </div>
+    );
+  }
+
+  if (muatError) {
+    return (
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3">
+        <p className="text-sm text-danger">{muatError}</p>
+        <Link
+          to="/pengadaan"
+          className="inline-flex items-center gap-2 text-sm font-medium text-primary transition hover:opacity-80"
+        >
+          <FiArrowLeft size={16} />
+          Kembali ke Daftar Pengadaan
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -2731,19 +3058,19 @@ const ProcurementDocument = () => {
             </div>
 
             <div className="flex gap-2">
-              {!isPreview && (
+              {!isPreview && dokumenTerhubung && (
                 <button
                   type="button"
-                  onClick={saveDocument}
-                  disabled={saveStatus === 'loading'}
+                  onClick={simpanDokumen}
+                  disabled={menyimpan}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded border border-primary px-4 text-sm font-medium text-primary transition hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {saveStatus === 'loading' ? (
+                  {menyimpan ? (
                     <FiLoader className="animate-spin" size={18} />
                   ) : (
                     <FiSave size={18} />
                   )}
-                  Simpan
+                  {sudahDisimpan ? 'Perbarui Dokumen' : 'Simpan Dokumen'}
                 </button>
               )}
               {(isSuratUndangan ||
@@ -3019,8 +3346,9 @@ const ProcurementDocument = () => {
                     }
                     className="w-full rounded border border-stroke bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white"
                   >
+                    <option value="">Pilih pegawai</option>
                     {selectedPengadaan.pbj.map((pegawai) => (
-                      <option key={pegawai.nrp} value={pegawai.nrp}>
+                      <option key={pegawai.id} value={pegawai.id}>
                         {pegawai.nama} - NRP : {pegawai.nrp}
                       </option>
                     ))}
@@ -3077,7 +3405,7 @@ const ProcurementDocument = () => {
                   <PbjSelect
                     label="Rapat dipimpin oleh PPK"
                     value={form.beritaRapatDipimpinPpk}
-                    options={selectedPengadaan.pbj}
+                    options={selectedPengadaan.ppk}
                     onChange={(value) =>
                       updateForm('beritaRapatDipimpinPpk', value)
                     }

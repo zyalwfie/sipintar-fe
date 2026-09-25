@@ -1,68 +1,38 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useState } from 'react';
 import {
   FiEdit2,
   FiExternalLink,
   FiEye,
+  FiLoader,
   FiPlus,
   FiSearch,
   FiTrash2,
   FiX,
 } from 'react-icons/fi';
 import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import {
+  DAFTAR_JENIS_DOKUMEN,
+  JENIS_DOKUMEN_LABEL,
+  getApiErrorMessage,
+  pengadaanApi,
+} from '../../api';
+import type { Pengadaan, PengadaanDetail } from '../../api';
 
-type Pengadaan = {
-  id: number;
-  namaPenyedia: string;
-  judulPengadaan: string;
-  hps: number;
-  status: 'Lengkap' | 'Belum Lengkap';
-  createdAt: string;
+/** Posisi 1-based dokumen sesuai urutan UI (untuk route Buka Dokumen). */
+const posisiDokumen = (jenis: string) => {
+  const index = DAFTAR_JENIS_DOKUMEN.findIndex((item) => item.jenis === jenis);
+  return index === -1 ? 1 : index + 1;
 };
 
 type ModalMode = 'view' | 'delete';
 
-const initialPengadaanData: Pengadaan[] = [
-  {
-    id: 1,
-    namaPenyedia: 'PT Nusa Teknologi Mandiri',
-    judulPengadaan: 'Pengadaan Laptop Operasional Kantor',
-    hps: 185000000,
-    status: 'Lengkap',
-    createdAt: '2026-07-30T09:15:00+08:00',
-  },
-  {
-    id: 2,
-    namaPenyedia: 'CV Sinar Berkah Abadi',
-    judulPengadaan: 'Pengadaan Meja dan Kursi Ruang Rapat',
-    hps: 72500000,
-    status: 'Belum Lengkap',
-    createdAt: '2026-08-03T10:30:00+08:00',
-  },
-  {
-    id: 3,
-    namaPenyedia: 'PT Prima Solusi Digital',
-    judulPengadaan: 'Pengadaan Lisensi Software Akuntansi',
-    hps: 128750000,
-    status: 'Lengkap',
-    createdAt: '2026-08-11T14:05:00+08:00',
-  },
-  {
-    id: 4,
-    namaPenyedia: 'CV Karya Logistik Nusantara',
-    judulPengadaan: 'Pengadaan Kendaraan Operasional Cabang',
-    hps: 342000000,
-    status: 'Belum Lengkap',
-    createdAt: '2026-09-02T08:45:00+08:00',
-  },
-  {
-    id: 5,
-    namaPenyedia: 'PT Citra Sarana Sejahtera',
-    judulPengadaan: 'Pengadaan Perangkat Jaringan Internal',
-    hps: 96500000,
-    status: 'Lengkap',
-    createdAt: '2026-09-14T11:20:00+08:00',
-  },
-];
+/** Nilai rupiah backend berupa string; ubah ke number untuk format. */
+const toNumber = (value: string | null | undefined) => {
+  if (!value) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
 
 const formatRupiah = (value: number) =>
   new Intl.NumberFormat('id-ID', {
@@ -71,29 +41,48 @@ const formatRupiah = (value: number) =>
     minimumFractionDigits: 0,
   }).format(value);
 
-const statusClassName = (status: Pengadaan['status']) =>
+const formatRupiahOpsional = (value: string | null) =>
+  value ? formatRupiah(toNumber(value)) : '-';
+
+/**
+ * Status kelengkapan disimpulkan dari kelengkapan Detail
+ * Pengadaan (backend belum menyimpan status eksplisit).
+ * Akan disempurnakan saat halaman 11 dokumen diwire.
+ */
+const hitungStatus = (
+  pengadaan: Pengadaan
+): 'Lengkap' | 'Belum Lengkap' => {
+  const wajib = [
+    pengadaan.nilaiHps,
+    pengadaan.hargaDitawarkanVendor,
+    pengadaan.hasilNegosiasi,
+    pengadaan.hargaPenawaranSudahPajak,
+    pengadaan.tempatPenandatanganan,
+    pengadaan.peserta,
+  ];
+
+  return wajib.every((item) => item != null && item !== '')
+    ? 'Lengkap'
+    : 'Belum Lengkap';
+};
+
+const statusClassName = (status: 'Lengkap' | 'Belum Lengkap') =>
   status === 'Lengkap'
     ? 'bg-success/10 text-success'
     : 'bg-warning/10 text-warning';
 
-const terbilangRingkas = (value: number) =>
-  `${new Intl.NumberFormat('id-ID').format(value)} rupiah`;
+const formatTanggal = (value: string | null) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
 
-const formatTanggalIndonesia = () =>
-  new Intl.DateTimeFormat('id-ID', {
+  return new Intl.DateTimeFormat('id-ID', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
-  }).format(new Date());
-
-const formatTanggalDibuat = (timestamp: string) =>
-  new Intl.DateTimeFormat('id-ID', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(timestamp));
+  }).format(date);
+};
 
 const formatFilterLabel = (monthValue: string) => {
   const [year, month] = monthValue.split('-');
@@ -106,73 +95,20 @@ const formatFilterLabel = (monthValue: string) => {
 
 const getMonthValue = (timestamp: string) => {
   const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return '';
   const month = String(date.getMonth() + 1).padStart(2, '0');
 
   return `${date.getFullYear()}-${month}`;
 };
-
-const getNomorDokumen = (index: number) => {
-  const now = new Date();
-  const nomorUrut = String(index + 1).padStart(3, '0');
-  const bulan = String(now.getMonth() + 1).padStart(2, '0');
-  return `${nomorUrut}.${bulan}.PBJ./BPR-NTB/2026`;
-};
-
-const dokumenPelaksana = [
-  'Surat Undangan Pengadaan',
-  'Berita Acara Penjelasan Pekerjaan',
-  'Bukti Pengambilan Dokumen Pengadaan',
-  'Berita Acara Pemasukan dan Pembukaan Dokumen',
-  'Tanda Terima Pemasukan Dokumen',
-  'Berita Acara Evaluasi Dokumen',
-  'Undangan Klarifikasi dan Negosiasi',
-  'Berita Acara Klarifikasi dan Negosiasi Dokumen',
-  'Berita Acara Hasil Pengadaan Langsung',
-  'Penunjukan Penyedia Pengadaan',
-  'SPK atau Kontrak Kerja',
-  'SPMK',
-  'Berita Acara Pemeriksaan Pekerjaan',
-  'Berita Acara Serah Terima Pekerjaan',
-  'Pengajuan Pembayaran',
-];
-
-const getPengadaanDetail = (pengadaan: Pengadaan) => ({
-  dataPenyedia: [
-    ['Alamat', 'Jl. Langko No. 12, Mataram'],
-    ['Nama Direktur', 'I Gede Wirawan'],
-    ['Nomor Identitas/NIP/NRP', `ID-${pengadaan.id}9821`],
-    ['Telepon/Fax', '0370-625412'],
-    ['Email', `admin.${pengadaan.id}@vendor.co.id`],
-    ['Jabatan', 'Direktur'],
-    ['Harga Penawaran Sudah Pajak 11%', formatRupiah(pengadaan.hps - 7500000)],
-    ['NPWP', `01.234.${pengadaan.id}56.7-911.000`],
-  ],
-  nilai: [
-    ['Judul Pengadaan', pengadaan.judulPengadaan],
-    ['Perhitungan HPS', formatRupiah(pengadaan.hps)],
-    ['Terbilang HPS', terbilangRingkas(pengadaan.hps)],
-    ['Harga yang Ditawarkan Vendor', formatRupiah(pengadaan.hps - 7500000)],
-    ['Hasil Negosiasi', formatRupiah(pengadaan.hps - 12500000)],
-    ['Tempat Penandatanganan', 'Mataram'],
-    ['Peserta', 'PPK, PBJ, Penyedia, dan Tim Teknis'],
-  ],
-  ppk: [
-    ['I Made Surya Pratama', '19870412'],
-    ['Ayu Lestari Dewi', '19940718'],
-  ],
-  pbj: [
-    ['Ni Putu Maharani', '19910622'],
-    ['Muhammad Rizal Fahri', '19891105'],
-  ],
-  penandaTangan: ['I Made Surya Pratama', 'Ni Putu Maharani'],
-});
 
 const DetailItem = ({ label, value }: { label: string; value: string }) => (
   <div className="rounded bg-gray-2 px-4 py-3 dark:bg-meta-4">
     <p className="mb-1 text-xs font-medium uppercase text-body dark:text-bodydark">
       {label}
     </p>
-    <p className="text-sm font-semibold text-black dark:text-white">{value}</p>
+    <p className="text-sm font-semibold text-black dark:text-white">
+      {value || '-'}
+    </p>
   </div>
 );
 
@@ -192,15 +128,41 @@ const DetailSection = ({
 );
 
 const TableOne = () => {
-  const [pengadaanData, setPengadaanData] =
-    useState<Pengadaan[]>(initialPengadaanData);
+  const [pengadaanData, setPengadaanData] = useState<Pengadaan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [monthFilter, setMonthFilter] = useState('');
   const [selectedPengadaan, setSelectedPengadaan] = useState<Pengadaan | null>(
     null
   );
+  const [detail, setDetail] = useState<PengadaanDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const muatPengadaan = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+
+    try {
+      const hasil = await pengadaanApi.daftar({
+        batas: 100,
+        urutkan: 'dibuatPada',
+        arah: 'desc',
+      });
+      setPengadaanData(hasil.data);
+    } catch (error) {
+      setLoadError(getApiErrorMessage(error, 'Gagal memuat data pengadaan.'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    muatPengadaan();
+  }, [muatPengadaan]);
 
   useEffect(() => {
     if (!modalMode) return;
@@ -212,10 +174,22 @@ const TableOne = () => {
     return () => cancelAnimationFrame(animationFrame);
   }, [modalMode]);
 
-  const openModal = (mode: ModalMode, pengadaan: Pengadaan) => {
+  const openModal = async (mode: ModalMode, pengadaan: Pengadaan) => {
     setSelectedPengadaan(pengadaan);
     setModalMode(mode);
     setIsModalVisible(false);
+
+    if (mode === 'view') {
+      setDetail(null);
+      setDetailLoading(true);
+      try {
+        setDetail(await pengadaanApi.detail(pengadaan.id));
+      } catch (error) {
+        toast.error(getApiErrorMessage(error, 'Gagal memuat detail pengadaan.'));
+      } finally {
+        setDetailLoading(false);
+      }
+    }
   };
 
   const closeModal = () => {
@@ -223,37 +197,50 @@ const TableOne = () => {
     window.setTimeout(() => {
       setModalMode(null);
       setSelectedPengadaan(null);
+      setDetail(null);
     }, 200);
   };
 
-  const handleDelete = () => {
-    if (!selectedPengadaan) return;
+  const handleDelete = async () => {
+    if (!selectedPengadaan || deleting) return;
 
-    setPengadaanData((currentData) =>
-      currentData.filter((pengadaan) => pengadaan.id !== selectedPengadaan.id)
-    );
-    closeModal();
+    setDeleting(true);
+    try {
+      await pengadaanApi.hapus(selectedPengadaan.id);
+      toast.success('Pengadaan berhasil dihapus.');
+      closeModal();
+      await muatPengadaan();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Gagal menghapus pengadaan.'));
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const monthOptions = Array.from(
-    new Set(pengadaanData.map((pengadaan) => getMonthValue(pengadaan.createdAt)))
+    new Set(
+      pengadaanData
+        .map((pengadaan) => getMonthValue(pengadaan.dibuatPada))
+        .filter(Boolean)
+    )
   ).sort((first, second) => second.localeCompare(first));
 
   const filteredPengadaanData = pengadaanData.filter((pengadaan) => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
+    const status = hitungStatus(pengadaan);
     const searchableText = [
-      pengadaan.namaPenyedia,
-      pengadaan.judulPengadaan,
-      pengadaan.status,
-      formatRupiah(pengadaan.hps),
-      formatTanggalDibuat(pengadaan.createdAt),
+      pengadaan.penyediaNama,
+      pengadaan.judul,
+      status,
+      formatRupiahOpsional(pengadaan.nilaiHps),
+      formatTanggal(pengadaan.dibuatPada),
     ]
       .join(' ')
       .toLowerCase();
     const matchesSearch =
       !normalizedSearch || searchableText.includes(normalizedSearch);
     const matchesMonth =
-      !monthFilter || getMonthValue(pengadaan.createdAt) === monthFilter;
+      !monthFilter || getMonthValue(pengadaan.dibuatPada) === monthFilter;
 
     return matchesSearch && matchesMonth;
   });
@@ -340,69 +327,108 @@ const TableOne = () => {
               </tr>
             </thead>
             <tbody>
-              {filteredPengadaanData.map((pengadaan, index) => (
-                <tr
-                  className={
-                    index === filteredPengadaanData.length - 1
-                      ? ''
-                      : 'border-b border-stroke dark:border-strokedark'
-                  }
-                  key={pengadaan.id}
-                >
-                  <td className="px-4 py-5 text-sm text-black dark:text-white">
-                    {pengadaan.namaPenyedia}
-                  </td>
-                  <td className="px-4 py-5 text-sm text-black dark:text-white">
-                    {pengadaan.judulPengadaan}
-                  </td>
-                  <td className="px-4 py-5 text-sm font-medium text-black dark:text-white">
-                    {formatRupiah(pengadaan.hps)}
-                  </td>
-                  <td className="px-4 py-5">
-                    <span
-                      className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${statusClassName(
-                        pengadaan.status
-                      )}`}
-                    >
-                      {pengadaan.status}
+              {loading && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-10 text-center text-sm text-body dark:text-bodydark"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <FiLoader className="animate-spin" size={16} />
+                      Memuat data pengadaan...
                     </span>
                   </td>
-                  <td className="px-4 py-5 text-sm text-black dark:text-white">
-                    {formatTanggalDibuat(pengadaan.createdAt)}
-                  </td>
-                  <td className="px-4 py-5">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openModal('view', pengadaan)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-primary/10 hover:text-primary dark:text-bodydark"
-                        aria-label="Lihat pengadaan"
-                        title="Lihat"
-                      >
-                        <FiEye size={18} />
-                      </button>
-                      <Link
-                        to={`/pengadaan/edit/${pengadaan.id}`}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-primary/10 hover:text-primary dark:text-bodydark"
-                        aria-label="Edit pengadaan"
-                        title="Edit"
-                      >
-                        <FiEdit2 size={18} />
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => openModal('delete', pengadaan)}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-danger/10 hover:text-danger dark:text-bodydark"
-                        aria-label="Hapus pengadaan"
-                        title="Hapus"
-                      >
-                        <FiTrash2 size={18} />
-                      </button>
-                    </div>
+                </tr>
+              )}
+
+              {!loading && loadError && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-10 text-center text-sm text-danger"
+                  >
+                    {loadError}
+                    <button
+                      type="button"
+                      onClick={muatPengadaan}
+                      className="ml-2 font-semibold underline"
+                    >
+                      Coba lagi
+                    </button>
                   </td>
                 </tr>
-              ))}
-              {filteredPengadaanData.length === 0 && (
+              )}
+
+              {!loading &&
+                !loadError &&
+                filteredPengadaanData.map((pengadaan, index) => {
+                  const status = hitungStatus(pengadaan);
+
+                  return (
+                    <tr
+                      className={
+                        index === filteredPengadaanData.length - 1
+                          ? ''
+                          : 'border-b border-stroke dark:border-strokedark'
+                      }
+                      key={pengadaan.id}
+                    >
+                      <td className="px-4 py-5 text-sm text-black dark:text-white">
+                        {pengadaan.penyediaNama}
+                      </td>
+                      <td className="px-4 py-5 text-sm text-black dark:text-white">
+                        {pengadaan.judul}
+                      </td>
+                      <td className="px-4 py-5 text-sm font-medium text-black dark:text-white">
+                        {formatRupiahOpsional(pengadaan.nilaiHps)}
+                      </td>
+                      <td className="px-4 py-5">
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${statusClassName(
+                            status
+                          )}`}
+                        >
+                          {status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-5 text-sm text-black dark:text-white">
+                        {formatTanggal(pengadaan.dibuatPada)}
+                      </td>
+                      <td className="px-4 py-5">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openModal('view', pengadaan)}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-primary/10 hover:text-primary dark:text-bodydark"
+                            aria-label="Lihat pengadaan"
+                            title="Lihat"
+                          >
+                            <FiEye size={18} />
+                          </button>
+                          <Link
+                            to={`/pengadaan/edit/${pengadaan.id}`}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-primary/10 hover:text-primary dark:text-bodydark"
+                            aria-label="Edit pengadaan"
+                            title="Edit"
+                          >
+                            <FiEdit2 size={18} />
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => openModal('delete', pengadaan)}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-danger/10 hover:text-danger dark:text-bodydark"
+                            aria-label="Hapus pengadaan"
+                            title="Hapus"
+                          >
+                            <FiTrash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+
+              {!loading && !loadError && filteredPengadaanData.length === 0 && (
                 <tr>
                   <td
                     colSpan={6}
@@ -440,7 +466,7 @@ const TableOne = () => {
                   {modalMode === 'delete' && 'Hapus Pengadaan'}
                 </h3>
                 <p className="mt-1 line-clamp-2 text-sm text-body dark:text-bodydark">
-                  {selectedPengadaan.judulPengadaan}
+                  {selectedPengadaan.judul}
                 </p>
               </div>
               <button
@@ -457,28 +483,67 @@ const TableOne = () => {
             <div className="px-5 py-5">
               {modalMode === 'view' && (
                 <div className="space-y-6">
-                  {(() => {
-                    const detail = getPengadaanDetail(selectedPengadaan);
-                    const tanggal = formatTanggalIndonesia();
+                  {detailLoading && (
+                    <div className="flex items-center justify-center gap-2 py-10 text-sm text-body dark:text-bodydark">
+                      <FiLoader className="animate-spin" size={18} />
+                      Memuat detail...
+                    </div>
+                  )}
 
-                    return (
-                      <>
-                        <DetailSection title="1. Nama Penyedia">
+                  {!detailLoading && detail && (
+                    <>
+                      <DetailSection title="1. Nama Penyedia">
+                        <DetailItem
+                          label="Nama Penyedia"
+                          value={detail.penyediaNama}
+                        />
+                      </DetailSection>
+
+                      <DetailSection title="2. Data Penyedia">
+                        <div className="grid gap-3 md:grid-cols-2">
                           <DetailItem
-                            label="Nama Penyedia"
-                            value={selectedPengadaan.namaPenyedia}
+                            label="Alamat"
+                            value={detail.penyediaAlamat ?? '-'}
                           />
-                        </DetailSection>
+                          <DetailItem
+                            label="Nama Direktur"
+                            value={detail.penyediaDirektur ?? '-'}
+                          />
+                          <DetailItem
+                            label="Nomor Identitas/NIP/NRP"
+                            value={detail.penyediaNomorIdentitas ?? '-'}
+                          />
+                          <DetailItem
+                            label="Telepon/Fax"
+                            value={detail.penyediaTeleponFax ?? '-'}
+                          />
+                          <DetailItem
+                            label="Email"
+                            value={detail.penyediaEmail ?? '-'}
+                          />
+                          <DetailItem
+                            label="Jabatan"
+                            value={detail.penyediaJabatan ?? '-'}
+                          />
+                          <DetailItem
+                            label="Harga Penawaran Sudah Pajak 11%"
+                            value={formatRupiahOpsional(
+                              detail.hargaPenawaranSudahPajak
+                            )}
+                          />
+                          <DetailItem
+                            label="NPWP"
+                            value={detail.penyediaNpwp ?? '-'}
+                          />
+                        </div>
+                      </DetailSection>
 
-                        <DetailSection title="2. Data Penyedia">
-                          <div className="grid gap-3 md:grid-cols-2">
-                            {detail.dataPenyedia.map(([label, value]) => (
-                              <DetailItem key={label} label={label} value={value} />
-                            ))}
-                          </div>
-                        </DetailSection>
-
-                        <DetailSection title="3. Keterangan Pelaksana">
+                      <DetailSection title="3. Keterangan Pelaksana">
+                        {detail.dokumen.length === 0 ? (
+                          <p className="rounded bg-gray-2 px-4 py-3 text-sm text-body dark:bg-meta-4 dark:text-bodydark">
+                            Belum ada baris Keterangan Pelaksana.
+                          </p>
+                        ) : (
                           <div className="overflow-x-auto">
                             <table className="w-full min-w-[820px] table-auto">
                               <thead>
@@ -487,10 +552,10 @@ const TableOne = () => {
                                     Dokumen
                                   </th>
                                   <th className="px-4 py-3 text-xs font-medium uppercase text-black dark:text-white">
-                                    Tanggal Pelaksana
+                                    Nomor Dokumen
                                   </th>
                                   <th className="px-4 py-3 text-xs font-medium uppercase text-black dark:text-white">
-                                    Nomor Dokumen
+                                    Tanggal Pelaksana
                                   </th>
                                   <th className="px-4 py-3 text-center text-xs font-medium uppercase text-black dark:text-white">
                                     Buka Dokumen
@@ -498,28 +563,29 @@ const TableOne = () => {
                                 </tr>
                               </thead>
                               <tbody>
-                                {dokumenPelaksana.map((dokumen, index) => (
+                                {detail.dokumen.map((dokumen) => (
                                   <tr
-                                    key={dokumen}
+                                    key={dokumen.id}
                                     className="border-b border-stroke last:border-b-0 dark:border-strokedark"
                                   >
                                     <td className="px-4 py-3 text-sm text-black dark:text-white">
-                                      {dokumen}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-black dark:text-white">
-                                      {tanggal}
+                                      {JENIS_DOKUMEN_LABEL[dokumen.jenis] ??
+                                        dokumen.jenis}
                                     </td>
                                     <td className="px-4 py-3 text-sm font-semibold text-black dark:text-white">
-                                      {getNomorDokumen(index)}
+                                      {dokumen.nomorDokumen ?? '-'}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-black dark:text-white">
+                                      {formatTanggal(dokumen.tanggalPelaksanaan)}
                                     </td>
                                     <td className="px-4 py-3">
                                       <div className="flex justify-center">
                                         <Link
-                                          to={`/pengadaan/${selectedPengadaan.id}/dokumen/${
-                                            index + 1
-                                          }/buka`}
+                                          to={`/pengadaan/${detail.id}/dokumen/${posisiDokumen(
+                                            dokumen.jenis
+                                          )}/buka`}
                                           className="inline-flex h-9 w-9 items-center justify-center rounded-md text-body transition hover:bg-primary/10 hover:text-primary dark:text-bodydark"
-                                          aria-label={`Buka dokumen ${dokumen}`}
+                                          aria-label="Buka dokumen"
                                           title="Buka Dokumen"
                                         >
                                           <FiExternalLink size={17} />
@@ -531,74 +597,110 @@ const TableOne = () => {
                               </tbody>
                             </table>
                           </div>
-                        </DetailSection>
+                        )}
+                      </DetailSection>
 
-                        <DetailSection title="4. Detail Pengadaan">
-                          <div className="grid gap-3 md:grid-cols-2">
-                            {detail.nilai.map(([label, value]) => (
-                              <DetailItem key={label} label={label} value={value} />
-                            ))}
-                            <DetailItem
-                              label="Tanggal Dibuat"
-                              value={formatTanggalDibuat(
-                                selectedPengadaan.createdAt
-                              )}
-                            />
-                            <div className="rounded bg-gray-2 px-4 py-3 dark:bg-meta-4">
-                              <p className="mb-2 text-xs font-medium uppercase text-body dark:text-bodydark">
-                                Status
-                              </p>
-                              <span
-                                className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${statusClassName(
-                                  selectedPengadaan.status
-                                )}`}
-                              >
-                                {selectedPengadaan.status}
-                              </span>
-                            </div>
+                      <DetailSection title="4. Detail Pengadaan">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <DetailItem
+                            label="Judul Pengadaan"
+                            value={detail.judul}
+                          />
+                          <DetailItem
+                            label="Perhitungan HPS"
+                            value={formatRupiahOpsional(detail.nilaiHps)}
+                          />
+                          <DetailItem
+                            label="Harga yang Ditawarkan Vendor"
+                            value={formatRupiahOpsional(
+                              detail.hargaDitawarkanVendor
+                            )}
+                          />
+                          <DetailItem
+                            label="Hasil Negosiasi"
+                            value={formatRupiahOpsional(detail.hasilNegosiasi)}
+                          />
+                          <DetailItem
+                            label="Tempat Penandatanganan"
+                            value={detail.tempatPenandatanganan ?? '-'}
+                          />
+                          <DetailItem
+                            label="Peserta"
+                            value={detail.peserta ?? '-'}
+                          />
+                          <DetailItem
+                            label="Tanggal Dibuat"
+                            value={formatTanggal(detail.dibuatPada)}
+                          />
+                          <div className="rounded bg-gray-2 px-4 py-3 dark:bg-meta-4">
+                            <p className="mb-2 text-xs font-medium uppercase text-body dark:text-bodydark">
+                              Status
+                            </p>
+                            <span
+                              className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${statusClassName(
+                                hitungStatus(detail)
+                              )}`}
+                            >
+                              {hitungStatus(detail)}
+                            </span>
                           </div>
-                        </DetailSection>
-
-                        <div className="grid gap-5 md:grid-cols-2">
-                          <DetailSection title="5. Nama PPK">
-                            <div className="space-y-2">
-                              {detail.ppk.map(([nama, nrp]) => (
-                                <DetailItem
-                                  key={nrp}
-                                  label={nama}
-                                  value={`NRP : ${nrp}`}
-                                />
-                              ))}
-                            </div>
-                          </DetailSection>
-
-                          <DetailSection title="6. Nama PBJ">
-                            <div className="space-y-2">
-                              {detail.pbj.map(([nama, nrp]) => (
-                                <DetailItem
-                                  key={nrp}
-                                  label={nama}
-                                  value={`NRP : ${nrp}`}
-                                />
-                              ))}
-                            </div>
-                          </DetailSection>
                         </div>
+                      </DetailSection>
 
-                        <DetailSection title="7. Master Data Tanda Tangan">
-                          <div className="grid gap-3 md:grid-cols-2">
-                            {detail.penandaTangan.map((nama, index) => (
+                      <div className="grid gap-5 md:grid-cols-2">
+                        <DetailSection title="5. Nama PPK">
+                          <div className="space-y-2">
+                            {detail.ppk.length === 0 && (
+                              <p className="rounded bg-gray-2 px-4 py-3 text-sm text-body dark:bg-meta-4 dark:text-bodydark">
+                                Belum ada PPK.
+                              </p>
+                            )}
+                            {detail.ppk.map((pegawai) => (
                               <DetailItem
-                                key={nama}
-                                label={`Nama Penanda Tangan ${index + 1}`}
-                                value={nama}
+                                key={pegawai.id}
+                                label={pegawai.nama}
+                                value={`NRP : ${pegawai.nrp}`}
                               />
                             ))}
                           </div>
                         </DetailSection>
-                      </>
-                    );
-                  })()}
+
+                        <DetailSection title="6. Nama PBJ">
+                          <div className="space-y-2">
+                            {detail.pbj.length === 0 && (
+                              <p className="rounded bg-gray-2 px-4 py-3 text-sm text-body dark:bg-meta-4 dark:text-bodydark">
+                                Belum ada PBJ.
+                              </p>
+                            )}
+                            {detail.pbj.map((pegawai) => (
+                              <DetailItem
+                                key={pegawai.id}
+                                label={pegawai.nama}
+                                value={`NRP : ${pegawai.nrp}`}
+                              />
+                            ))}
+                          </div>
+                        </DetailSection>
+                      </div>
+
+                      <DetailSection title="7. Master Data Tanda Tangan">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {detail.penandaTangan.length === 0 && (
+                            <p className="rounded bg-gray-2 px-4 py-3 text-sm text-body dark:bg-meta-4 dark:text-bodydark">
+                              Belum ada penanda tangan.
+                            </p>
+                          )}
+                          {detail.penandaTangan.map((pegawai, index) => (
+                            <DetailItem
+                              key={pegawai.id}
+                              label={`Nama Penanda Tangan ${index + 1}`}
+                              value={pegawai.nama}
+                            />
+                          ))}
+                        </div>
+                      </DetailSection>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -609,10 +711,10 @@ const TableOne = () => {
                   </p>
                   <div className="mt-4 rounded bg-gray-2 p-4 dark:bg-meta-4">
                     <p className="text-sm font-semibold text-black dark:text-white">
-                      {selectedPengadaan.namaPenyedia}
+                      {selectedPengadaan.penyediaNama}
                     </p>
                     <p className="mt-1 text-sm text-body dark:text-bodydark">
-                      {selectedPengadaan.judulPengadaan}
+                      {selectedPengadaan.judul}
                     </p>
                   </div>
 
@@ -627,9 +729,14 @@ const TableOne = () => {
                     <button
                       type="button"
                       onClick={handleDelete}
-                      className="inline-flex items-center gap-2 rounded bg-danger px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90"
+                      disabled={deleting}
+                      className="inline-flex items-center gap-2 rounded bg-danger px-4 py-2 text-sm font-medium text-white transition hover:bg-opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <FiTrash2 size={16} />
+                      {deleting ? (
+                        <FiLoader className="animate-spin" size={16} />
+                      ) : (
+                        <FiTrash2 size={16} />
+                      )}
                       Hapus
                     </button>
                   </div>

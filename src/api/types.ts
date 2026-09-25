@@ -53,6 +53,15 @@ export type PegawaiInput = Omit<
   'id' | 'dibuatPada' | 'diperbaruiPada'
 >;
 
+/** Satu baris Excel; `baris` = nomor baris di file untuk laporan gagal. */
+export type ImportPegawaiBaris = PegawaiInput & { baris?: number };
+
+export interface HasilImportPegawai {
+  total: number;
+  berhasil: number;
+  gagal: { baris: number; kodePegawai: string; pesan: string }[];
+}
+
 export interface RingkasanPegawai {
   totalPegawai: number;
   lakiLaki: number;
@@ -181,6 +190,13 @@ export interface BuatPengadaanInput {
 }
 
 export type PerbaruiPengadaanInput = Partial<BuatPengadaanInput>;
+
+export interface NomorDokumenBerikutnya {
+  tahun: number;
+  urutTerakhir: number;
+  /** Contoh: 017.09.PBJ/BPR-NTB/2026 */
+  nomor: string[];
+}
 
 export interface DaftarPengadaanQuery {
   cari?: string;

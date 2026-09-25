@@ -3,6 +3,8 @@ import {
   ApiListResponse,
   ApiResponse,
   DaftarPegawaiQuery,
+  HasilImportPegawai,
+  ImportPegawaiBaris,
   Paginasi,
   Pegawai,
   PegawaiInput,
@@ -53,6 +55,14 @@ export const pegawaiApi = {
     );
 
     return data.data;
+  },
+
+  async import(data: ImportPegawaiBaris[]): Promise<HasilImportPegawai> {
+    const { data: respons } = await apiClient.post<
+      ApiResponse<HasilImportPegawai>
+    >('/pegawai/import', { data });
+
+    return respons.data;
   },
 
   async perbarui(

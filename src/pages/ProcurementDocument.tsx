@@ -335,7 +335,7 @@ const PETA_DOKUMEN: Record<string, PetaDokumen> = {
   },
 };
 
-type ProcurementViewData = (typeof pengadaanData)[number];
+type ProcurementViewData = DokumenPengadaanView;
 
 type ApiResponse = {
   data?: Record<string, any> | null;
@@ -995,7 +995,7 @@ const ProcurementDocument = () => {
   const [saveStatus, setSaveStatus] = useState<
     'idle' | 'loading' | 'success' | 'error'
   >('idle');
-  const [saveError, setSaveError] = useState('');
+  const [saveError] = useState('');
   const [useHeaderFooter] = useState(true);
   const [showImageSettings, setShowImageSettings] = useState(false);
   const [defaultDocumentImages, setDefaultDocumentImages] =
@@ -1062,7 +1062,7 @@ const ProcurementDocument = () => {
       const procurement = responses[0]?.data;
       if (!procurement || !isActive) return;
 
-      const fallback = fallbackPengadaan;
+      const fallback = emptyPengadaanView;
       const assignments = Array.isArray(procurement.pegawaiAssignments)
         ? procurement.pegawaiAssignments
         : [];
@@ -1122,7 +1122,7 @@ const ProcurementDocument = () => {
       const spk = responses[11]?.data ?? {};
       const invitationActivity = invitation.activities?.[0];
 
-      setLoadedProcurement(nextProcurement);
+      setSelectedPengadaan(nextProcurement);
       setNomorDokumen((current) => invitation.nomorDokumen || current);
       setForm((current) => ({
         ...current,
@@ -1557,32 +1557,6 @@ const ProcurementDocument = () => {
     navigate(
       `/pengadaan/${id}/dokumen/${nomorDokumenBerikutnya}/${action ?? 'buka'}`,
     );
-  const saveDocument = async () => {
-    setSaveStatus('loading');
-    setSaveError('');
-
-    try {
-      await new Promise((resolve) => window.setTimeout(resolve, 450));
-
-      localStorage.setItem(
-        `sipintar-document-${paketKey}-${documentKey}`,
-        JSON.stringify({
-          documentName,
-          nomorDokumen,
-          form,
-          savedAt: new Date().toISOString(),
-        })
-      );
-
-      setSaveStatus('success');
-    } catch (error) {
-      setSaveError(
-        error instanceof Error
-          ? error.message
-          : 'Perubahan tidak dapat disimpan.'
-      );
-      setSaveStatus('error');
-    }
   };
 
   // Header dan footer selalu memakai gambar bawaan dari public/.

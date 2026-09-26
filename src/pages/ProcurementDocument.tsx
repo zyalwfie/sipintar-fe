@@ -1,15 +1,19 @@
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import {
   FiArrowLeft,
+  FiChevronLeft,
+  FiChevronRight,
   FiDownload,
   FiEye,
   FiFileText,
-  FiLayout,
+  FiCheckCircle,
+  FiAlertCircle,
   FiLoader,
+  FiLayout,
   FiSave,
   FiX,
 } from 'react-icons/fi';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import {
   DefaultDocumentImages,
@@ -22,7 +26,13 @@ import {
   loadDefaultDocumentImages,
   saveDocumentHeaderFooterVisibility,
 } from '../utils/documentTemplate';
-import { dokumenApi, DOKUMEN_SLUG, getApiErrorMessage, pengadaanApi } from '../api';
+import {
+  dokumenApi,
+  DOKUMEN_SLUG,
+  getApiErrorMessage,
+  pegawaiApi,
+  pengadaanApi,
+} from '../api';
 import type { NilaiEfektif } from '../api';
 
 const dokumenPelaksana = [
@@ -83,6 +93,34 @@ const emptyPengadaanView: DokumenPengadaanView = {
   ppk: [],
   pbj: [],
   penandaTangan: [],
+};
+
+const PegawaiOptionsContext = createContext<DokumenPegawaiView[] | null>(null);
+
+const muatSemuaPegawai = async (): Promise<DokumenPegawaiView[]> => {
+  const semuaPegawai: DokumenPegawaiView[] = [];
+  let halaman = 1;
+
+  while (true) {
+    const hasil = await pegawaiApi.daftar({ halaman, batas: 100 });
+
+    semuaPegawai.push(
+      ...hasil.data.map((pegawai) => ({
+        id: pegawai.id,
+        nama: pegawai.nama,
+        nrp: pegawai.nrp,
+        jabatan: pegawai.jabatan,
+      })),
+    );
+
+    if (halaman >= hasil.meta.totalHalaman || hasil.data.length === 0) {
+      break;
+    }
+
+    halaman += 1;
+  }
+
+  return semuaPegawai;
 };
 
 // ======================================================
@@ -296,6 +334,21 @@ const PETA_DOKUMEN: Record<string, PetaDokumen> = {
     ],
   },
 };
+
+type ProcurementViewData = (typeof pengadaanData)[number];
+
+type ApiResponse = {
+  data?: Record<string, any> | null;
+  meta?: { resolved?: Record<string, any> };
+};
+
+const API_BASE_URL = 'http://localhost:4000/api';
+
+const toDateInput = (value: unknown) =>
+  typeof value === 'string' && value ? value.slice(0, 10) : '';
+
+const toTimeInput = (value: unknown) =>
+  typeof value === 'string' && value ? value.slice(0, 5) : '';
 
 const formatTanggalIndonesia = () =>
   new Intl.DateTimeFormat('id-ID', {
@@ -580,8 +633,12 @@ const PbjSelect = ({
   value: string;
   options: { id: string; nama: string; nrp: string }[];
   onChange: (value: string) => void;
-}) => (
-  <div>
+}) => {
+  const semuaPegawai = useContext(PegawaiOptionsContext);
+  const daftarOpsi = semuaPegawai?.length ? semuaPegawai : options;
+
+  return (
+    <div>
     <label className="mb-2 block text-sm font-medium text-black dark:text-white">
       {label}
     </label>
@@ -591,14 +648,15 @@ const PbjSelect = ({
       className="w-full rounded border border-stroke bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white"
     >
       <option value="">Pilih pegawai</option>
-      {options.map((pegawai) => (
+      {daftarOpsi.map((pegawai) => (
         <option key={pegawai.id} value={pegawai.id}>
           {pegawai.nama} - NRP : {pegawai.nrp}
         </option>
       ))}
     </select>
   </div>
-);
+  );
+};
 
 const EvalSelect = ({
   label,
@@ -698,12 +756,14 @@ const HeaderFooterSwitch = ({
 
 const ProcurementDocument = () => {
   const { id, documentIndex, action } = useParams();
+  const navigate = useNavigate();
   const selectedIndex = Math.max(Number(documentIndex ?? 1) - 1, 0);
   const documentName =
     dokumenPelaksana[selectedIndex] ?? dokumenPelaksana[0];
   const slug = DOKUMEN_SLUG[selectedIndex] ?? null;
   const [selectedPengadaan, setSelectedPengadaan] =
     useState<DokumenPengadaanView>(emptyPengadaanView);
+  const [daftarPegawai, setDaftarPegawai] = useState<DokumenPegawaiView[]>([]);
   const [memuat, setMemuat] = useState(true);
   const [muatError, setMuatError] = useState('');
   const [menyimpan, setMenyimpan] = useState(false);
@@ -733,6 +793,9 @@ const ProcurementDocument = () => {
   const isPenunjukanPenyedia =
     !isPreview && documentName === 'Penunjukan Penyedia Pengadaan';
   const isSpk = !isPreview && documentName === 'SPK atau Kontrak Kerja';
+  const currentDocumentNumber = selectedIndex + 1;
+  const hasPreviousDocument = currentDocumentNumber > 1;
+  const hasNextDocument = currentDocumentNumber < dokumenPelaksana.length;
   const [nomorDokumen, setNomorDokumen] = useState(
     getNomorDokumen(selectedIndex)
   );
@@ -929,6 +992,10 @@ const ProcurementDocument = () => {
     spkNilaiKontrak: selectedPengadaan.hasilNegosiasi, // [Procurement.negotiatedPrice]
   });
   const [showResultModal, setShowResultModal] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<
+    'idle' | 'loading' | 'success' | 'error'
+  >('idle');
+  const [saveError, setSaveError] = useState('');
   const [useHeaderFooter] = useState(true);
   const [showImageSettings, setShowImageSettings] = useState(false);
   const [defaultDocumentImages, setDefaultDocumentImages] =
@@ -958,6 +1025,328 @@ const ProcurementDocument = () => {
     );
   }, [paketKey, documentKey]);
 
+  useEffect(() => {
+    let isActive = true;
+    const procurementId = id?.startsWith('procurement-')
+      ? id
+      : `procurement-${String(Number(id ?? 1)).padStart(3, '0')}`;
+
+    const loadDocumentData = async () => {
+      const paths = [
+        `/procurements/${procurementId}`,
+        `/procurements/${procurementId}/surat-undangan-pengadaan`,
+        `/procurements/${procurementId}/berita-acara-penjelasan-pekerjaan`,
+        `/procurements/${procurementId}/bukti-pengambilan-dokumen`,
+        `/procurements/${procurementId}/berita-acara-pemasukan-dan-pembukaan-dokumen`,
+        `/procurements/${procurementId}/tanda-terima-pemasukan-dokumen`,
+        `/procurements/${procurementId}/berita-acara-evaluasi-dokumen`,
+        `/procurements/${procurementId}/undangan-klarifikasi-dan-negosiasi`,
+        `/procurements/${procurementId}/berita-acara-klarifikasi-dan-negosiasi-dokumen`,
+        `/procurements/${procurementId}/hasil-pengadaan`,
+        `/procurements/${procurementId}/penunjukan-penyedia`,
+        `/procurements/${procurementId}/spk`,
+      ];
+
+      const responses = await Promise.all(
+        paths.map(async (path): Promise<ApiResponse | null> => {
+          try {
+            const response = await fetch(`${API_BASE_URL}${path}`);
+            if (!response.ok) return null;
+            return response.json();
+          } catch {
+            return null;
+          }
+        })
+      );
+
+      const procurement = responses[0]?.data;
+      if (!procurement || !isActive) return;
+
+      const fallback = fallbackPengadaan;
+      const assignments = Array.isArray(procurement.pegawaiAssignments)
+        ? procurement.pegawaiAssignments
+        : [];
+      const pegawaiById = new Map(
+        assignments
+          .filter((assignment: any) => assignment.pegawai)
+          .map((assignment: any) => [assignment.pegawai.id, assignment.pegawai])
+      );
+      const getNrp = (pegawaiId: unknown) =>
+        pegawaiById.get(pegawaiId as string)?.nrp ?? '';
+      const getDetail = (response: ApiResponse | null) => ({
+        ...(response?.meta?.resolved ?? {}),
+        ...(response?.data ?? {}),
+      });
+      const provider = procurement.provider ?? {};
+      const ppk = assignments
+        .filter((assignment: any) => assignment.relationType === 'PPK')
+        .map((assignment: any) => assignment.pegawai)
+        .filter(Boolean)
+        .map((pegawai: any) => ({ nama: pegawai.nama, nrp: pegawai.nrp }));
+      const pbj = assignments
+        .filter((assignment: any) => assignment.relationType === 'PBJ')
+        .map((assignment: any) => assignment.pegawai)
+        .filter(Boolean)
+        .map((pegawai: any) => ({ nama: pegawai.nama, nrp: pegawai.nrp }));
+
+      const nextProcurement: ProcurementViewData = {
+        ...fallback,
+        namaPenyedia: provider.name ?? fallback.namaPenyedia,
+        namaDirektur: provider.directorName ?? fallback.namaDirektur,
+        jabatanDirektur: provider.position ?? fallback.jabatanDirektur,
+        alamat: provider.address ?? fallback.alamat,
+        email: provider.email ?? fallback.email,
+        judulPengadaan: procurement.title ?? fallback.judulPengadaan,
+        hps: String(
+          procurement.estimatedPriceIncludingTax ?? fallback.hps
+        ),
+        hasilNegosiasi: String(
+          procurement.negotiatedPrice ?? fallback.hasilNegosiasi
+        ),
+        tempatPenandatanganan:
+          procurement.signingPlace ?? fallback.tempatPenandatanganan,
+        ppk: ppk.length ? ppk : fallback.ppk,
+        pbj: pbj.length ? pbj : fallback.pbj,
+      };
+
+      const invitation = getDetail(responses[1]);
+      const explanation = getDetail(responses[2]);
+      const collection = getDetail(responses[3]);
+      const submission = getDetail(responses[4]);
+      const submissionReceipt = getDetail(responses[5]);
+      const evaluation = getDetail(responses[6]);
+      const clarificationInvitation = getDetail(responses[7]);
+      const clarificationMinutes = getDetail(responses[8]);
+      const hasil = responses[9]?.data ?? {};
+      const penunjukan = responses[10]?.data ?? {};
+      const spk = responses[11]?.data ?? {};
+      const invitationActivity = invitation.activities?.[0];
+
+      setLoadedProcurement(nextProcurement);
+      setNomorDokumen((current) => invitation.nomorDokumen || current);
+      setForm((current) => ({
+        ...current,
+        kepadaYth: invitation.namaPenerima ?? current.kepadaYth,
+        di: invitation.alamatPenerima ?? current.di,
+        email: invitation.emailPenerima ?? current.email,
+        perihal: invitation.perihal ?? current.perihal,
+        namaPaketPekerjaan:
+          invitation.namaPaketPekerjaan ?? nextProcurement.judulPengadaan,
+        nilaiTotalHps: String(
+          invitation.nilaiTotalHps ?? nextProcurement.hps
+        ),
+        tempatSurat:
+          invitation.tempatSurat ?? nextProcurement.tempatPenandatanganan,
+        tanggalSurat: toDateInput(invitation.tanggalSurat) || current.tanggalSurat,
+        hariPelaksanaan:
+          toDateInput(invitation.hariPelaksanaan) || current.hariPelaksanaan,
+        waktuMulai: toTimeInput(invitation.wariMulai ?? invitation.waktuMulai) || current.waktuMulai,
+        waktuSelesai: toTimeInput(invitation.waktuSelesai) || current.waktuSelesai,
+        tempatPelaksanaan:
+          invitation.tempatPelaksanaan ?? nextProcurement.tempatPenandatanganan,
+        namaKegiatan: invitationActivity?.name ?? current.namaKegiatan,
+        tanggalKegiatan:
+          toDateInput(invitationActivity?.date) || current.tanggalKegiatan,
+        waktuKegiatanMulai:
+          toTimeInput(invitationActivity?.startTime) || current.waktuKegiatanMulai,
+        waktuKegiatanSelesai:
+          toTimeInput(invitationActivity?.endTime) || current.waktuKegiatanSelesai,
+        keteranganTujuan: invitation.keteranganTujuan ?? current.keteranganTujuan,
+        keteranganPermohonan:
+          invitation.keteranganPermohonan ?? current.keteranganPermohonan,
+        penandaTangan: getNrp(invitation.signatoryId) || current.penandaTangan,
+
+        beritaTanggal: toDateInput(explanation.tanggal) || current.beritaTanggal,
+        beritaPukul: toTimeInput(explanation.pukul) || current.beritaPukul,
+        beritaTempat: explanation.tempat ?? current.beritaTempat,
+        beritaPeserta: explanation.peserta ?? current.beritaPeserta,
+        beritaNamaPenjelasanPekerjaan:
+          explanation.namaPenjelasanPekerjaan ?? current.beritaNamaPenjelasanPekerjaan,
+        beritaKeteranganAwal: explanation.keteranganAwal ?? current.beritaKeteranganAwal,
+        beritaRapatDipimpinPpk:
+          getNrp(explanation.ppkPimpinanRapatId) || current.beritaRapatDipimpinPpk,
+        beritaPenjelasanAdministrasiPpbj:
+          getNrp(explanation.pbjPenjelasanUmumId) || current.beritaPenjelasanAdministrasiPpbj,
+        beritaPenjelasanTeknikPpbj:
+          getNrp(explanation.pbjPenjelasanTeknikId) || current.beritaPenjelasanTeknikPpbj,
+        beritaRapatTanyaJawab:
+          getNrp(explanation.pbjTanyaJawabId) || current.beritaRapatTanyaJawab,
+        beritaKeteranganTujuan: explanation.keteranganTujuan ?? current.beritaKeteranganTujuan,
+        beritaPenandaTangan:
+          getNrp(explanation.penandaTanganPbjId) || current.beritaPenandaTangan,
+
+        buktiPekerjaan: collection.pekerjaan ?? current.buktiPekerjaan,
+        buktiTanggal: toDateInput(collection.tanggal) || current.buktiTanggal,
+        buktiWaktu: toTimeInput(collection.waktu) || current.buktiWaktu,
+        buktiNamaPerusahaan: collection.namaPerusahaan ?? current.buktiNamaPerusahaan,
+        buktiNamaPejabatPerusahaan:
+          collection.namaPejabat ?? current.buktiNamaPejabatPerusahaan,
+        buktiJabatanPejabat: collection.jabatan ?? current.buktiJabatanPejabat,
+        buktiPenandaTangan:
+          getNrp(collection.penandaTanganId) || current.buktiPenandaTangan,
+
+        baPemasukanTanggalDokumen:
+          toDateInput(submission.tanggalBeritaAcara) || current.baPemasukanTanggalDokumen,
+        baPemasukanPukul: toTimeInput(submission.pukul) || current.baPemasukanPukul,
+        baPemasukanNamaPekerjaan:
+          submission.pengadaanPekerjaan ?? current.baPemasukanNamaPekerjaan,
+        baPemasukanPejabatPengadaan:
+          submission.pejabatPengadaanPbjId
+            ? pegawaiById.get(submission.pejabatPengadaanPbjId)?.nama ?? current.baPemasukanPejabatPengadaan
+            : current.baPemasukanPejabatPengadaan,
+        baPemasukanPenyedia: submission.namaPenyedia ?? current.baPemasukanPenyedia,
+        baPemasukanTanggalPemasukan:
+          toDateInput(submission.tanggalPemasukanPenawaran) || current.baPemasukanTanggalPemasukan,
+        baPemasukanMasaBerlaku:
+          submission.masaBerlakuPenawaran ?? current.baPemasukanMasaBerlaku,
+        baPemasukanNilaiPenawaran: String(
+          submission.nilaiPenawaran ?? current.baPemasukanNilaiPenawaran
+        ),
+        baPemasukanRincianHarga: submission.rincianHarga ?? current.baPemasukanRincianHarga,
+        baPemasukanKeterangan: submission.keterangan ?? current.baPemasukanKeterangan,
+        baPemasukanPenandaTangan:
+          getNrp(submission.penandaTanganPbjId) || current.baPemasukanPenandaTangan,
+
+        tandaTerimaPekerjaan: submissionReceipt.pekerjaan ?? current.tandaTerimaPekerjaan,
+        tandaTerimaTanggal:
+          toDateInput(submissionReceipt.tanggal) || current.tandaTerimaTanggal,
+        tandaTerimaWaktu:
+          toTimeInput(submissionReceipt.waktu) || current.tandaTerimaWaktu,
+        tandaTerimaNamaPerusahaan:
+          submissionReceipt.namaPerusahaan ?? current.tandaTerimaNamaPerusahaan,
+        tandaTerimaNamaPejabat:
+          submissionReceipt.namaPejabat ?? current.tandaTerimaNamaPejabat,
+        tandaTerimaJabatan: submissionReceipt.jabatan ?? current.tandaTerimaJabatan,
+        tandaTerimaPenandaTangan:
+          getNrp(submissionReceipt.penandaTanganId) || current.tandaTerimaPenandaTangan,
+
+        baEvaluasiTanggalDokumen:
+          toDateInput(evaluation.tanggalEvaluasi) || current.baEvaluasiTanggalDokumen,
+        baEvaluasiNamaPekerjaan:
+          evaluation.namaPekerjaan ?? current.baEvaluasiNamaPekerjaan,
+        baEvaluasiNamaPenyedia:
+          evaluation.namaPenyedia ?? current.baEvaluasiNamaPenyedia,
+        baEvaluasiNomorBaPemasukan:
+          evaluation.nomorBaPemasukan ?? current.baEvaluasiNomorBaPemasukan,
+        baEvaluasiNilaiPenawaran: String(
+          evaluation.nilaiPenawaran ?? current.baEvaluasiNilaiPenawaran
+        ),
+        baEvaluasiJadwalPelaksanaan:
+          evaluation.jadwalPelaksanaan ?? current.baEvaluasiJadwalPelaksanaan,
+        baEvaluasiKualifikasiSiup:
+          evaluation.kualifikasiSiup ?? current.baEvaluasiKualifikasiSiup,
+        baEvaluasiKualifikasiNpwp:
+          evaluation.kualifikasiNpwp ?? current.baEvaluasiKualifikasiNpwp,
+        baEvaluasiKualifikasiKtp:
+          evaluation.kualifikasiKtp ?? current.baEvaluasiKualifikasiKtp,
+        baEvaluasiKualifikasiKswp:
+          evaluation.kualifikasiKswp ?? current.baEvaluasiKualifikasiKswp,
+        baEvaluasiPenandaTangan:
+          getNrp(evaluation.penandaTanganId) || current.baEvaluasiPenandaTangan,
+
+        uknLampiran: clarificationInvitation.lampiran ?? current.uknLampiran,
+        uknTempatSurat: clarificationInvitation.tempatSurat ?? current.uknTempatSurat,
+        uknTanggalSurat:
+          toDateInput(clarificationInvitation.tanggalSurat) || current.uknTanggalSurat,
+        uknKepadaJabatan:
+          clarificationInvitation.jabatanPenerima ?? current.uknKepadaJabatan,
+        uknNamaPenyedia: clarificationInvitation.namaPenyedia ?? current.uknNamaPenyedia,
+        uknAlamat: clarificationInvitation.alamat ?? current.uknAlamat,
+        uknPerihal: clarificationInvitation.perihal ?? current.uknPerihal,
+        uknPekerjaan: clarificationInvitation.pekerjaan ?? current.uknPekerjaan,
+        uknWaktu: toTimeInput(clarificationInvitation.waktu) || current.uknWaktu,
+        uknHari:
+          toDateInput(clarificationInvitation.tanggalPelaksanaan) || current.uknHari,
+        uknTempat: clarificationInvitation.tempat ?? current.uknTempat,
+        uknParagrafPembuka:
+          clarificationInvitation.paragrafPembuka ?? current.uknParagrafPembuka,
+        uknParagrafPenutup:
+          clarificationInvitation.paragrafPenutup ?? current.uknParagrafPenutup,
+        uknPenandaTangan:
+          getNrp(clarificationInvitation.penandaTanganId) || current.uknPenandaTangan,
+
+        baknTanggal: toDateInput(clarificationMinutes.tanggal) || current.baknTanggal,
+        baknTempat: clarificationMinutes.tempat ?? current.baknTempat,
+        baknNamaPenyedia: clarificationMinutes.namaPenyedia ?? current.baknNamaPenyedia,
+        baknPekerjaan: clarificationMinutes.pekerjaan ?? current.baknPekerjaan,
+        baknHasil1: clarificationMinutes.hasilKlarifikasiTeknis ?? current.baknHasil1,
+        baknHasil2: clarificationMinutes.hasilNegosiasiHarga ?? current.baknHasil2,
+        baknHasil3:
+          clarificationMinutes.hasilPembuktianKualifikasi ?? current.baknHasil3,
+        baknKeteranganPenutup:
+          clarificationMinutes.keteranganPenutup ?? current.baknKeteranganPenutup,
+        baknNamaDirektur: clarificationMinutes.namaDirektur ?? current.baknNamaDirektur,
+        baknPenandaTangan:
+          getNrp(clarificationMinutes.penandaTanganId) || current.baknPenandaTangan,
+
+        bahplTanggal: toDateInput(hasil.bahplTanggal) || current.bahplTanggal,
+        bahplPekerjaan: hasil.bahplPekerjaan ?? current.bahplPekerjaan,
+        bahplHps: String(hasil.bahplHps ?? current.bahplHps),
+        bahplUnsurEvaluasi: hasil.bahplUnsurEvaluasi ?? current.bahplUnsurEvaluasi,
+        bahplNamaPerusahaan: hasil.bahplNamaPerusahaan ?? current.bahplNamaPerusahaan,
+        bahplHargaPenawaran: String(
+          hasil.bahplHargaPenawaran ?? current.bahplHargaPenawaran
+        ),
+        bahplEvalAdministrasi: hasil.bahplEvalAdministrasi ?? current.bahplEvalAdministrasi,
+        bahplEvalTeknis: hasil.bahplEvalTeknis ?? current.bahplEvalTeknis,
+        bahplEvalHarga: hasil.bahplEvalHarga ?? current.bahplEvalHarga,
+        bahplEvalKualifikasi: hasil.bahplEvalKualifikasi ?? current.bahplEvalKualifikasi,
+        bahplKet: hasil.bahplKet ?? current.bahplKet,
+        bahplNamaPenyedia: hasil.bahplNamaPenyedia ?? current.bahplNamaPenyedia,
+        bahplNamaDirektur: hasil.bahplNamaDirektur ?? current.bahplNamaDirektur,
+        bahplAlamat: hasil.bahplAlamat ?? current.bahplAlamat,
+        bahplNpwp: hasil.bahplNpwp ?? current.bahplNpwp,
+        bahplHargaNegosiasi: String(
+          hasil.bahplHargaNegosiasi ?? current.bahplHargaNegosiasi
+        ),
+        bahplKeteranganPenutup:
+          hasil.bahplKeteranganPenutup ?? current.bahplKeteranganPenutup,
+        bahplPenandaTangan:
+          hasil.bahplPenandaTangan ?? current.bahplPenandaTangan,
+
+        penunjukanTempat: penunjukan.penunjukanTempat ?? current.penunjukanTempat,
+        penunjukanTanggal:
+          toDateInput(penunjukan.penunjukanTanggal) || current.penunjukanTanggal,
+        penunjukanLampiran:
+          penunjukan.penunjukanLampiran ?? current.penunjukanLampiran,
+        penunjukanJabatanTujuan:
+          penunjukan.penunjukanJabatanTujuan ?? current.penunjukanJabatanTujuan,
+        penunjukanKepada: penunjukan.penunjukanKepada ?? current.penunjukanKepada,
+        penunjukanDi: penunjukan.penunjukanDi ?? current.penunjukanDi,
+        penunjukanPerihal: penunjukan.penunjukanPerihal ?? current.penunjukanPerihal,
+        penunjukanTanggalPenawaran:
+          toDateInput(penunjukan.penunjukanTanggalPenawaran) || current.penunjukanTanggalPenawaran,
+        penunjukanNilaiNegosiasi: String(
+          penunjukan.penunjukanNilaiNegosiasi ?? current.penunjukanNilaiNegosiasi
+        ),
+        penunjukanKeteranganTindakLanjut:
+          penunjukan.penunjukanKeteranganTindakLanjut ?? current.penunjukanKeteranganTindakLanjut,
+        penunjukanPenandaTangan:
+          penunjukan.penunjukanPenandaTangan ?? current.penunjukanPenandaTangan,
+
+        spkTanggal: toDateInput(spk.spkTanggal) || current.spkTanggal,
+        spkPpk: spk.spkPpk ?? current.spkPpk,
+        spkNamaPenyedia: spk.spkNamaPenyedia ?? current.spkNamaPenyedia,
+        spkJabatanPenyedia: spk.spkJabatanPenyedia ?? current.spkJabatanPenyedia,
+        spkPerusahaanPenyedia:
+          spk.spkPerusahaanPenyedia ?? current.spkPerusahaanPenyedia,
+        spkPaketPengadaan: spk.spkPaketPengadaan ?? current.spkPaketPengadaan,
+        spkNomorSuratUndangan:
+          spk.spkNomorSuratUndangan ?? current.spkNomorSuratUndangan,
+        spkTanggalSuratUndangan:
+          toDateInput(spk.spkTanggalSuratUndangan) || current.spkTanggalSuratUndangan,
+        spkSumberDana: spk.spkSumberDana ?? current.spkSumberDana,
+        spkNilaiKontrak: String(spk.spkNilaiKontrak ?? current.spkNilaiKontrak),
+      }));
+    };
+
+    loadDocumentData().catch(() => undefined);
+
+    return () => {
+      isActive = false;
+    };
+  }, [id]);
+
   const updateHeaderFooterVisibility = (
     kind: DocumentAssetKind,
     isVisible: boolean
@@ -971,13 +1360,8 @@ const ProcurementDocument = () => {
   // Pegawai dicari berdasarkan id (nilai select), lintas peran
   // (PPK/PBJ/penanda tangan) supaya template selalu menemukan orangnya.
   const pegawaiKosong: DokumenPegawaiView = { id: '', nama: '', nrp: '' };
-  const semuaPegawai: DokumenPegawaiView[] = [
-    ...selectedPengadaan.ppk,
-    ...selectedPengadaan.pbj,
-    ...selectedPengadaan.penandaTangan,
-  ];
   const getPegawaiById = (idPegawai: string): DokumenPegawaiView =>
-    semuaPegawai.find((pegawai) => pegawai.id === idPegawai) ?? pegawaiKosong;
+    daftarPegawai.find((pegawai) => pegawai.id === idPegawai) ?? pegawaiKosong;
 
   const selectedPenandaTangan = getPegawaiById(form.penandaTangan);
   const beritaRapatDipimpin = getPegawaiById(form.beritaRapatDipimpinPpk);
@@ -1084,8 +1468,10 @@ const ProcurementDocument = () => {
 
       try {
         const detail = await pengadaanApi.detail(id);
+        const semuaPegawai = await muatSemuaPegawai();
         if (batal) return;
 
+        setDaftarPegawai(semuaPegawai);
         setSelectedPengadaan({
           namaPenyedia: detail.penyediaNama,
           namaDirektur: detail.penyediaDirektur ?? '',
@@ -1163,6 +1549,40 @@ const ProcurementDocument = () => {
   const openResultModal = () => {
     setShowImageSettings(false);
     setShowResultModal(true);
+  };
+
+  const pindahDokumen = (nomorDokumenBerikutnya: number) => {
+    if (!id) return;
+
+    navigate(
+      `/pengadaan/${id}/dokumen/${nomorDokumenBerikutnya}/${action ?? 'buka'}`,
+    );
+  const saveDocument = async () => {
+    setSaveStatus('loading');
+    setSaveError('');
+
+    try {
+      await new Promise((resolve) => window.setTimeout(resolve, 450));
+
+      localStorage.setItem(
+        `sipintar-document-${paketKey}-${documentKey}`,
+        JSON.stringify({
+          documentName,
+          nomorDokumen,
+          form,
+          savedAt: new Date().toISOString(),
+        })
+      );
+
+      setSaveStatus('success');
+    } catch (error) {
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : 'Perubahan tidak dapat disimpan.'
+      );
+      setSaveStatus('error');
+    }
   };
 
   // Header dan footer selalu memakai gambar bawaan dari public/.
@@ -2605,7 +3025,8 @@ const ProcurementDocument = () => {
   }
 
   return (
-    <>
+    <PegawaiOptionsContext.Provider value={daftarPegawai}>
+      <>
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="mb-3">
@@ -2975,7 +3396,7 @@ const ProcurementDocument = () => {
                     className="w-full rounded border border-stroke bg-white px-4 py-3 text-sm text-black outline-none transition focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white"
                   >
                     <option value="">Pilih pegawai</option>
-                    {selectedPengadaan.pbj.map((pegawai) => (
+                    {daftarPegawai.map((pegawai) => (
                       <option key={pegawai.id} value={pegawai.id}>
                         {pegawai.nama} - NRP : {pegawai.nrp}
                       </option>
@@ -4191,9 +4612,104 @@ const ProcurementDocument = () => {
                 </div>
               </div>
             )}
+            
+          </div>
+
+          <div className="flex items-center justify-between border-t border-stroke px-5 py-4 dark:border-strokedark">
+            <button
+              type="button"
+              onClick={() => pindahDokumen(currentDocumentNumber - 1)}
+              disabled={!hasPreviousDocument}
+              className="inline-flex h-10 items-center justify-center gap-1 rounded border border-stroke px-3 text-sm text-body transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-strokedark dark:text-bodydark"
+              title="Dokumen sebelumnya"
+              aria-label="Dokumen sebelumnya"
+            >
+              <FiChevronLeft size={18} />
+              Sebelumnya
+            </button>
+            <span className="text-sm text-body dark:text-bodydark">
+              Dokumen {currentDocumentNumber} dari {dokumenPelaksana.length}
+            </span>
+            <button
+              type="button"
+              onClick={() => pindahDokumen(currentDocumentNumber + 1)}
+              disabled={!hasNextDocument}
+              className="inline-flex h-10 items-center justify-center gap-1 rounded border border-stroke px-3 text-sm text-body transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-strokedark dark:text-bodydark"
+              title="Dokumen berikutnya"
+              aria-label="Dokumen berikutnya"
+            >
+              Berikutnya
+              <FiChevronRight size={18} />
+            </button>
           </div>
         </div>
       </div>
+
+      {saveStatus !== 'idle' && (
+        <div
+          className="fixed inset-0 z-9999 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+          onClick={() => {
+            if (saveStatus !== 'loading') setSaveStatus('idle');
+          }}
+        >
+          <div
+            className="w-full max-w-sm rounded-sm border border-stroke bg-white p-6 text-center shadow-default dark:border-strokedark dark:bg-boxdark"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-live="polite"
+          >
+            {saveStatus === 'loading' ? (
+              <>
+                <FiLoader
+                  className="mx-auto animate-spin text-primary"
+                  size={42}
+                />
+                <h3 className="mt-4 text-lg font-semibold text-black dark:text-white">
+                  Menyimpan perubahan
+                </h3>
+                <p className="mt-2 text-sm text-body dark:text-bodydark">
+                  Data dokumen sedang disimpan.
+                </p>
+              </>
+            ) : saveStatus === 'success' ? (
+              <>
+                <FiCheckCircle className="mx-auto text-success" size={42} />
+                <h3 className="mt-4 text-lg font-semibold text-black dark:text-white">
+                  Perubahan tersimpan
+                </h3>
+                <p className="mt-2 text-sm text-body dark:text-bodydark">
+                  Data dokumen berhasil disimpan.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSaveStatus('idle')}
+                  className="mt-5 inline-flex h-10 items-center justify-center rounded bg-primary px-5 text-sm font-medium text-white transition hover:bg-opacity-90"
+                >
+                  Selesai
+                </button>
+              </>
+            ) : (
+              <>
+                <FiAlertCircle className="mx-auto text-danger" size={42} />
+                <h3 className="mt-4 text-lg font-semibold text-black dark:text-white">
+                  Penyimpanan gagal
+                </h3>
+                <p className="mt-2 text-sm text-body dark:text-bodydark">
+                  {saveError || 'Perubahan tidak dapat disimpan.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setSaveStatus('idle')}
+                  className="mt-5 inline-flex h-10 items-center justify-center rounded border border-stroke px-5 text-sm font-medium text-black transition hover:border-primary hover:text-primary dark:border-strokedark dark:text-white"
+                >
+                  Tutup
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {showResultModal && (
         <div
@@ -4326,7 +4842,8 @@ const ProcurementDocument = () => {
           </div>
         </div>
       )}
-    </>
+      </>
+    </PegawaiOptionsContext.Provider>
   );
 };
 

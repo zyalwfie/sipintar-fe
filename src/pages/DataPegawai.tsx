@@ -9,6 +9,7 @@ import {
 import {
   FiDownload,
   FiEdit2,
+  FiFileText,
   FiLoader,
   FiPlus,
   FiSearch,
@@ -23,6 +24,8 @@ import * as XLSX from 'xlsx';
 import Breadcrumb from '../components/Breadcrumbs/Breadcrumb';
 import { getApiErrorMessage, pegawaiApi } from '../api';
 import type {
+  HasilImportPegawai,
+  ImportPegawaiBaris,
   JenisKelamin,
   Pegawai,
   PegawaiInput,
@@ -80,7 +83,11 @@ const DataPegawai = () => {
   const [selectedPegawai, setSelectedPegawai] = useState<Pegawai | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [form, setForm] = useState<PegawaiInput>(emptyForm);
+  const [exporting, setExporting] = useState(false);
   const [importMessage, setImportMessage] = useState('');
+  const [importGagal, setImportGagal] = useState<HasilImportPegawai['gagal']>(
+    []
+  );
 
   const muatRingkasan = useCallback(async () => {
     try {
@@ -230,6 +237,73 @@ const DataPegawai = () => {
     XLSX.writeFile(workbook, 'template-data-pegawai-sipintar.xlsx');
   };
 
+  // Kolom sama dengan template supaya hasil export bisa diimport ulang.
+  // Mengikuti pencarian yang sedang aktif.
+  const handleExportExcel = async () => {
+    if (exporting) return;
+
+    setExporting(true);
+    const loadingToast = toast.loading('Menyiapkan file export...');
+
+    try {
+      const semuaPegawai: Pegawai[] = [];
+      let halaman = 1;
+      let totalHalaman = 1;
+
+      do {
+        const hasil = await pegawaiApi.daftar({
+          cari: query.trim() || undefined,
+          halaman,
+          batas: 100,
+        });
+        semuaPegawai.push(...hasil.data);
+        totalHalaman = hasil.meta.totalHalaman;
+        halaman += 1;
+      } while (halaman <= totalHalaman);
+
+      if (semuaPegawai.length === 0) {
+        toast.error('Tidak ada data pegawai untuk diexport.');
+        return;
+      }
+
+      const barisExcel: Record<string, string>[] = semuaPegawai.map(
+        (item) => ({
+          'Kode Pegawai': item.kodePegawai,
+          'Kode Unit': item.kodeUnit,
+          'Unit Kerja': item.unitKerja,
+          Nama: item.nama,
+          Jabatan: item.jabatan,
+          // Disimpan sebagai teks supaya nol di depan NRP tidak hilang.
+          NRP: item.nrp,
+          'Jenis Kelamin': item.jenisKelamin,
+        })
+      );
+      const worksheet = XLSX.utils.json_to_sheet(barisExcel, {
+        header: excelHeaders,
+      });
+      worksheet['!cols'] = excelHeaders.map((header) => ({
+        wch:
+          Math.max(
+            header.length,
+            ...barisExcel.map((baris) => (baris[header] ?? '').length)
+          ) + 2,
+      }));
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Data Pegawai');
+
+      const tanggal = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(workbook, `data-pegawai-sipintar-${tanggal}.xlsx`);
+
+      toast.success(`${semuaPegawai.length} data pegawai berhasil diexport.`);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Gagal mengexport data pegawai.'));
+    } finally {
+      toast.dismiss(loadingToast);
+      setExporting(false);
+    }
+  };
+
   const handleImportExcel = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -242,8 +316,12 @@ const DataPegawai = () => {
       defval: '',
     });
 
-    const importedPegawai: PegawaiInput[] = rows
+    // Baris kosong total dilewati; baris yang terisi sebagian tetap
+    // dikirim supaya server melaporkan kolom mana yang kurang.
+    const importedPegawai: ImportPegawaiBaris[] = rows
       .map((row) => ({
+        // __rowNum__ dari xlsx berbasis 0, jadi +1 = nomor baris di Excel.
+        baris: ((row as { __rowNum__?: number }).__rowNum__ ?? 0) + 1,
         kodePegawai: getCellValue(row, 'Kode Pegawai'),
         kodeUnit: getCellValue(row, 'Kode Unit'),
         unitKerja: getCellValue(row, 'Unit Kerja'),
@@ -254,15 +332,16 @@ const DataPegawai = () => {
       }))
       .filter(
         (item) =>
-          item.kodePegawai &&
-          item.kodeUnit &&
-          item.unitKerja &&
-          item.nama &&
-          item.jabatan &&
-          item.nrp,
+          item.kodePegawai ||
+          item.kodeUnit ||
+          item.unitKerja ||
+          item.nama ||
+          item.jabatan ||
+          item.nrp
       );
 
     event.target.value = '';
+    setImportGagal([]);
 
     if (importedPegawai.length === 0) {
       setImportMessage(
@@ -276,29 +355,32 @@ const DataPegawai = () => {
       `Mengimport ${importedPegawai.length} data pegawai...`,
     );
 
-    const hasil = await Promise.allSettled(
-      importedPegawai.map((item) => pegawaiApi.buat(item)),
-    );
+    try {
+      const hasil = await pegawaiApi.import(importedPegawai);
 
-    const berhasil = hasil.filter((item) => item.status === 'fulfilled').length;
-    const gagal = importedPegawai.length - berhasil;
+      setImportGagal(hasil.gagal);
+      setImportMessage(
+        `${hasil.berhasil} dari ${hasil.total} data pegawai berhasil diimport${
+          hasil.gagal.length > 0 ? `, ${hasil.gagal.length} gagal:` : '.'
+        }`
+      );
 
-    toast.dismiss(loadingToast);
-    setImportMessage(
-      `${berhasil} data pegawai berhasil diimport${
-        gagal > 0 ? `, ${gagal} gagal (kemungkinan kode/NRP duplikat).` : '.'
-      }`,
-    );
+      if (hasil.berhasil > 0) {
+        toast.success(`${hasil.berhasil} pegawai berhasil diimport.`);
+        await refresh();
+      } else {
+        toast.error('Semua baris gagal diimport.');
+      }
 
-    if (berhasil > 0) {
-      toast.success(`${berhasil} pegawai berhasil diimport.`);
-      await refresh();
+      // Pesan dengan daftar gagal dibiarkan tampil sampai ditutup.
+      if (hasil.gagal.length === 0) {
+        window.setTimeout(() => setImportMessage(''), 5000);
+      }
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, 'Gagal mengimport data pegawai.'));
+    } finally {
+      toast.dismiss(loadingToast);
     }
-    if (gagal > 0 && berhasil === 0) {
-      toast.error('Semua baris gagal diimport.');
-    }
-
-    window.setTimeout(() => setImportMessage(''), 5000);
   };
 
   return (
@@ -346,7 +428,30 @@ const DataPegawai = () => {
 
       {importMessage && (
         <div className="mb-6 rounded-sm border border-primary/30 bg-primary/10 px-5 py-4 text-sm font-semibold text-primary">
-          {importMessage}
+          <div className="flex items-start justify-between gap-4">
+            <span>{importMessage}</span>
+            <button
+              type="button"
+              aria-label="Tutup pesan import"
+              onClick={() => {
+                setImportMessage('');
+                setImportGagal([]);
+              }}
+              className="shrink-0 hover:opacity-70"
+            >
+              <FiX size={18} />
+            </button>
+          </div>
+          {importGagal.length > 0 && (
+            <ul className="mt-2 max-h-48 list-disc overflow-y-auto pl-5 font-normal text-danger">
+              {importGagal.map((item) => (
+                <li key={item.baris}>
+                  Baris {item.baris}
+                  {item.kodePegawai ? ` (${item.kodePegawai})` : ''}: {item.pesan}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
 
@@ -387,6 +492,19 @@ const DataPegawai = () => {
             >
               <FiUpload size={18} />
               Import Data Excel
+            </button>
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={exporting}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded border border-stroke px-4 text-sm font-medium text-black transition hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-60 dark:border-strokedark dark:text-white"
+            >
+              {exporting ? (
+                <FiLoader size={18} className="animate-spin" />
+              ) : (
+                <FiFileText size={18} />
+              )}
+              Export Data Excel
             </button>
             <button
               type="button"

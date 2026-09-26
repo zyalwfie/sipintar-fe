@@ -1,4 +1,11 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ChangeEvent,
+  FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {
   FiDownload,
   FiEdit2,
@@ -46,7 +53,7 @@ const emptyForm: PegawaiInput = {
 
 const getCellValue = (row: Record<string, unknown>, header: string) => {
   const foundKey = Object.keys(row).find(
-    (key) => key.trim().toLowerCase() === header.toLowerCase()
+    (key) => key.trim().toLowerCase() === header.toLowerCase(),
   );
   const value = foundKey ? row[foundKey] : '';
 
@@ -139,7 +146,7 @@ const DataPegawai = () => {
             nrp: item.nrp,
             jenisKelamin: item.jenisKelamin,
           }
-        : emptyForm
+        : emptyForm,
     );
   };
 
@@ -153,7 +160,7 @@ const DataPegawai = () => {
 
   const updateForm = <K extends keyof PegawaiInput>(
     key: K,
-    value: PegawaiInput[K]
+    value: PegawaiInput[K],
   ) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
@@ -252,25 +259,25 @@ const DataPegawai = () => {
           item.unitKerja &&
           item.nama &&
           item.jabatan &&
-          item.nrp
+          item.nrp,
       );
 
     event.target.value = '';
 
     if (importedPegawai.length === 0) {
       setImportMessage(
-        'Import gagal. Pastikan header Excel sesuai template yang tersedia.'
+        'Import gagal. Pastikan header Excel sesuai template yang tersedia.',
       );
       window.setTimeout(() => setImportMessage(''), 4000);
       return;
     }
 
     const loadingToast = toast.loading(
-      `Mengimport ${importedPegawai.length} data pegawai...`
+      `Mengimport ${importedPegawai.length} data pegawai...`,
     );
 
     const hasil = await Promise.allSettled(
-      importedPegawai.map((item) => pegawaiApi.buat(item))
+      importedPegawai.map((item) => pegawaiApi.buat(item)),
     );
 
     const berhasil = hasil.filter((item) => item.status === 'fulfilled').length;
@@ -280,7 +287,7 @@ const DataPegawai = () => {
     setImportMessage(
       `${berhasil} data pegawai berhasil diimport${
         gagal > 0 ? `, ${gagal} gagal (kemungkinan kode/NRP duplikat).` : '.'
-      }`
+      }`,
     );
 
     if (berhasil > 0) {
@@ -483,7 +490,8 @@ const DataPegawai = () => {
                             : 'bg-meta-5/10 text-meta-5'
                         }`}
                       >
-                        {item.jenisKelamin} - {labelJenisKelamin(item.jenisKelamin)}
+                        {item.jenisKelamin} -{' '}
+                        {labelJenisKelamin(item.jenisKelamin)}
                       </span>
                     </td>
                     <td className="px-5 py-4">
@@ -568,7 +576,8 @@ const DataPegawai = () => {
                       {selectedPegawai.nama}
                     </p>
                     <p className="mt-1 text-sm text-body dark:text-bodydark">
-                      {selectedPegawai.kodePegawai} | NRP : {selectedPegawai.nrp}
+                      {selectedPegawai.kodePegawai} | NRP :{' '}
+                      {selectedPegawai.nrp}
                     </p>
                   </div>
                   <div className="mt-5 flex justify-end gap-3">
@@ -647,7 +656,9 @@ const DataPegawai = () => {
                         type="text"
                         required
                         value={form.nama}
-                        onChange={(event) => updateForm('nama', event.target.value)}
+                        onChange={(event) =>
+                          updateForm('nama', event.target.value)
+                        }
                         className="w-full rounded border border-stroke bg-transparent px-4 py-2.5 text-sm text-black outline-none transition focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white"
                       />
                     </div>
@@ -673,7 +684,9 @@ const DataPegawai = () => {
                         type="text"
                         required
                         value={form.nrp}
-                        onChange={(event) => updateForm('nrp', event.target.value)}
+                        onChange={(event) =>
+                          updateForm('nrp', event.target.value)
+                        }
                         className="w-full rounded border border-stroke bg-transparent px-4 py-2.5 text-sm text-black outline-none transition focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white"
                       />
                     </div>
@@ -686,7 +699,7 @@ const DataPegawai = () => {
                         onChange={(event) =>
                           updateForm(
                             'jenisKelamin',
-                            event.target.value as JenisKelamin
+                            event.target.value as JenisKelamin,
                           )
                         }
                         className="w-full rounded border border-stroke bg-transparent px-4 py-2.5 text-sm text-black outline-none transition focus:border-primary dark:border-form-strokedark dark:bg-form-input dark:text-white"
